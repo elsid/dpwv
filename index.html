@@ -100,7 +100,7 @@ void bar(Buzz);
 // If type is foo should construct Fizz from given value and call foo.
 // If type is bar should construct Buzz from given value and call bar.
 // Otherwise should throw an exception.
-void dispatch(std::string type, std::string value);
+void route(std::string type, std::string value);
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -108,7 +108,7 @@ void dispatch(std::string type, std::string value);
 ### If-else solution
 
 ```c++
-void dispatch(std::string type, std::string value) {
+void route(std::string type, std::string value) {
   if (type == "foo") {
     foo(Fizz {std::move(value)});
   } else if (type == "bar") {
@@ -135,7 +135,7 @@ void bbb(Bfzz);
 void fff(Ffzz);
 void wtf(Ziff);
 
-void dispatch(std::string type, std::string value);
+void route(std::string type, std::string value);
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -143,7 +143,7 @@ void dispatch(std::string type, std::string value);
 ### Ok, no problem
 
 ```c++
-void dispatch(std::string type, std::string value) {
+void route(std::string type, std::string value) {
   if (type == "foo") foo(Fizz {std::move(value)});
   else if (type == "bar") bar(Buzz {std::move(value)});
   else if (type == "far") far(Fuzz {std::move(value)});
@@ -169,7 +169,7 @@ void dispatch(std::string type, std::string value) {
 Was there any typo?
 
 </script></section><section><pre><code data-trim>
-void dispatch(std::string type, std::string value) {
+void route(std::string type, std::string value) {
   if (type == "foo") foo(Fizz {std::move(value)});
   else if (type == "bar") bar(Buzz {std::move(value)});
   else if (type == "far") far(Fuzz {std::move(value)});
@@ -189,7 +189,7 @@ void dispatch(std::string type, std::string value) {
 ```c++
 enum Type;
 Type make_type(std::string);
-void dispatch(std::string type, std::string value) {
+void route(std::string type, std::string value) {
   switch (make_type(type)) {
     case Type::foo: foo(Fizz {std::move(value)});
     case Type::bar: bar(Buzz {std::move(value)});
@@ -214,7 +214,7 @@ struct Base {
   virtual void call(std::string value) = 0;
 };
 using Map = std::map<Type, std::unique_ptr<Base>>;
-void dispatch(Map alternatives, std::string type, std::string value) {
+void route(Map alternatives, std::string type, std::string value) {
   alternatives.at(make_type(type))->call(std::move(value));
 }
 struct Foo : Base {
@@ -242,9 +242,9 @@ void bar(Fizz, Buzz);
 struct Interface {
   using It = std::vector<std::string>::const_iterator;
 
-  virtual int dispatch0(It it, It end) const = 0;
-  virtual int dispatch1(It it, It end, const std::string& arg0) const = 0;
-  virtual int dispatch2(It it, It end, const std::string& arg0,
+  virtual int route0(It it, It end) const = 0;
+  virtual int route1(It it, It end, const std::string& arg0) const = 0;
+  virtual int route2(It it, It end, const std::string& arg0,
                       const std::string& arg1) const = 0;
   // ...
 };
@@ -252,22 +252,22 @@ struct Interface {
 
 </script></section><section data-markdown><script type="text/template">
 
-### Dispatcher class
+### Router class
 
 ```c++
-struct Dispatcher : Interface {
+struct Router : Interface {
   std::map<std::string, std::shared_ptr<Interface>> alternatives;
-  void dispatch2(It it, It end, const std::string& arg0,
+  void route2(It it, It end, const std::string& arg0,
                   const std::string& arg1) const override {
     if (it == end) {
       throw std::invalid_argument("path is not found");
     }
     const auto next = alternatives.find(*it);
     if (next != alternatives.end()) {
-      return next->second->dispatch2(++it, end, arg0, arg1);
+      return next->second->route2(++it, end, arg0, arg1);
     } else {
       const auto& arg2 = *it;
-      return dispatch3(++it, end, arg0, arg1, arg2);
+      return route3(++it, end, arg0, arg1, arg2);
     }
   }
   // ...
@@ -280,18 +280,18 @@ struct Dispatcher : Interface {
 
 ```c++
 struct Foo : Interface {
-  void dispatch1(It, It, const std::string& arg0) const override {
+  void route1(It, It, const std::string& arg0) const override {
     return foo(Fizz {arg0});
   }
 };
 struct Bar : Interface {
-  void dispatch0(It, It) const {
+  void route0(It, It) const {
     throw std::logic_error("invalid call");
   }
-  void dispatch1(It, It, const std::string&) const {
+  void route1(It, It, const std::string&) const {
     throw std::logic_error("invalid call");
   }
-  void dispatch2(It, It, const std::string& arg0,
+  void route2(It, It, const std::string& arg0,
                   const std::string& arg1) const override {
     return bar(Fizz {arg0}, Buzz {arg1});
   }
@@ -307,11 +307,11 @@ struct Base {
   using It = std::vector<std::string>::const_iterator;
   using StringCref = std::reference_wrapper<const std::string>;
 
-  virtual int dispatch0(It it, It end,
+  virtual int route0(It it, It end,
                         const std::tuple<>& arguments) const = 0;
-  virtual int dispatch1(It it, It end,
+  virtual int route1(It it, It end,
                         const std::tuple<StringCref>& arguments) const = 0;
-  virtual int dispatch2(It it, It end,
+  virtual int route2(It it, It end,
                         const std::tuple<StringCref, StringCref>& arguments) = 0;
   // ...
 };
@@ -329,7 +329,7 @@ struct Base {
     std::tuple<StringCref, StringCref>,
     // ...
   >;
-  virtual void dispatch(It it, It end, const Arguments& arguments) = 0;
+  virtual void route(It it, It end, const Arguments& arguments) = 0;
 };
 ```
 
@@ -340,7 +340,7 @@ struct Base {
 ```c++
 template <class Visitor>
 struct Endpoint : Interface {
-  void dispatch(It, It, const std::string&, const Arguments& arguments) const override {
+  void route(It, It, const std::string&, const Arguments& arguments) const override {
     return std::visit(
       [] (const auto& arguments) { return hana::unpack(arguments, Visitor {}); },
       arguments
@@ -367,7 +367,7 @@ If we can't do this...
 ```c++
 class Inteface {
   template <class ... Ts>
-  virtual void dispatch(It it, It end, Ts&& ...) = 0;
+  virtual void route(It it, It end, Ts&& ...) = 0;
 };
 ```
 ...but can do with std::variant and std::visit.
@@ -395,7 +395,7 @@ const auto api =
   );
 
 template <class Api>
-void dispatch(const Api& api, const std::vector<std::string>& path,
+void route(const Api& api, const std::vector<std::string>& path,
               const std::string& method);
 ```
 
@@ -683,14 +683,14 @@ constexpr auto operator |(const Tree<hana::tuple<Lhs ...>>& lhs,
 
 </script></section><section data-markdown><script type="text/template">
 
-### Let's implement dispatch
+### Let's implement route
 
 ```c++
 template <class T, class Path, class MethodName, class ... Args>
-constexpr void dispatch(const Tree<T>& tree, const Path& path,
+constexpr void route(const Tree<T>& tree, const Path& path,
     const MethodName& method, Args&& ... args) {
   using ContextType = Context<typename Path::const_iterator, std::decay_t<MethodName>>;
-  return dispatch_for_tuple(
+  return route_for_tuple(
     ContextType {std::cbegin(path), std::cend(path), method},
     tree.value,
     hana::tuple<>(),
@@ -711,10 +711,10 @@ constexpr void dispatch(const Tree<T>& tree, const Path& path,
 
 ```c++
 template <class Result, class T, class Path, class MethodName, class ... Args>
-constexpr CallResult<Result> dispatch(const Tree<T>& tree, const Path& path,
+constexpr CallResult<Result> route(const Tree<T>& tree, const Path& path,
     const MethodName& method, Args&& ... args) {
   using ContextType = Context<typename Path::const_iterator, std::decay_t<MethodName>>;
-  return dispatch_for_tuple<Result>(
+  return route_for_tuple<Result>(
     ContextType {std::cbegin(path), std::cend(path), method},
     tree.value,
     hana::tuple<>(),
@@ -747,18 +747,18 @@ using CallResult = std::variant<
 
 ```c++
 template <class R, class C, class P, class ... Key, class ... Node, class ... Args>
-constexpr CallResult<R> dispatch_for_tuple(const C& context,
+constexpr CallResult<R> route_for_tuple(const C& context,
     const hana::tuple<hana::pair<Key, Node> ...>& node, P&& parameters,
     Args&& ... args) {
   if (!at_path_end(context)) {
-    if (auto result = dispatch_for_location<R>(context, hana::filter(node, is_location),
+    if (auto result = route_for_location<R>(context, hana::filter(node, is_location),
                                                std::forward<Args>(args) ...)) {
         return std::move(result).value();
     }
-    return dispatch_for_parameter<R>(context, hana::filter(node, is_parameter),
+    return route_for_parameter<R>(context, hana::filter(node, is_parameter),
                                      std::forward<Args>(args) ...);
   }
-  return dispatch_for_method<R>(context, hana::filter(node, is_method),
+  return route_for_method<R>(context, hana::filter(node, is_method),
                                 std::forward<Args>(args) ...);
 }
 ```
@@ -773,18 +773,18 @@ constexpr CallResult<R> dispatch_for_tuple(const C& context,
 
 ```c++
 template <class R, class Context, class Parameters, class ... Args>
-constexpr std::optional<CallResult<R>> dispatch_for_location(const Context&,
+constexpr std::optional<CallResult<R>> route_for_location(const Context&,
     const hana::tuple<>& /* node */, Parameters&&, Args&& ...) {
   return {};
 }
 
 template <class R, class C, class P, class ... Key, class ... Node, class ... Args>
-constexpr std::optional<CallResult<R>> dispatch_for_location(const C& context,
+constexpr std::optional<CallResult<R>> route_for_location(const C& context,
     const hana::tuple<hana::pair<Location<Key>, Node> ...>& node,
     P&& parameters, Args&& ... args) {
   return binary_search<CallResult<R>>(node, get_path_value(context), Less {}, Equal {},
     return_monostate_on_void([&] (const auto& next) {
-      return dispatch_for_tuple<Result>(
+      return route_for_tuple<Result>(
         with_next_path_iterator(context),
         hana::second(next),
         std::forward<Parameters>(parameters), std::forward<Args>(args) ...
@@ -803,10 +803,10 @@ constexpr std::optional<CallResult<R>> dispatch_for_location(const C& context,
 
 ```c++
 template <class R, class C, class Parameters, class T, class Node, class ... Args>
-constexpr CallResult<R> dispatch_for_parameter(const C& context,
+constexpr CallResult<R> route_for_parameter(const C& context,
     const hana::tuple<hana::pair<Parameter<T>, Node>>& node,
     Parameters&& parameters, Args&& ... args) {
-  return dispatch_for_tuple<R>(
+  return route_for_tuple<R>(
     with_next_path_iterator(context),
     hana::second(hana::front(node)),
     hana::append(std::forward<Parameters>(parameters),
@@ -824,13 +824,13 @@ constexpr CallResult<R> dispatch_for_parameter(const C& context,
 
 ```c++
 template <class R, class Context, class Parameters, class ... Args>
-constexpr CallResult<R> dispatch_for_method(const Context&,
+constexpr CallResult<R> route_for_method(const Context&,
     const hana::tuple<>&, Parameters&&, Args&& ...) noexcept {
   return ErrorCode::methodNotFound;
 }
 
 template <class R, class C, class P, class ... Name, class ... Node, class ... Args>
-constexpr CallResult<R> dispatch_for_method(const C& context,
+constexpr CallResult<R> route_for_method(const C& context,
     const hana::tuple<hana::pair<Method<Name>, Node> ...>& node,
         P&& params, Args&& ... args) {
   auto result = binary_search<CallResult<R>>(node, context.method, Less {}, Equal {},
@@ -916,22 +916,22 @@ struct UnorderedMapTraits<hana::tuple<Ts ...>> {
 
 ```c++
 template <template <class ...> class MapTraits, class ... Ts>
-struct MapDispatcher {
+struct MapRouter {
   hana::tuple<Ts ...> nodes;
   typename LocationsMapTraits<MapTraits, Ts ...>::Type locations;
   typename MethodsMapTraits<MapTraits, Ts ...>::Type methods;
 
-  MapDispatcher() = default;
-  MapDispatcher(hana::tuple<Ts ...> nodes) : nodes(std::move(nodes)) {
+  MapRouter() = default;
+  MapRouter(hana::tuple<Ts ...> nodes) : nodes(std::move(nodes)) {
       fill_locations(this->nodes, locations);
       fill_methods(this->nodes, methods);
   }
-  MapDispatcher(const MapDispatcher& other)  { ... }
-  MapDispatcher(MapDispatcher&& other) { ... }
+  MapRouter(const MapRouter& other)  { ... }
+  MapRouter(MapRouter&& other) { ... }
 };
 ```
 
-<span class="fragment current-only" data-code-focus="3">Map dispatcher contains original nodes</span>
+<span class="fragment current-only" data-code-focus="3">Map router contains original nodes</span>
 <span class="fragment current-only" data-code-focus="4">locations map</span>
 <span class="fragment current-only" data-code-focus="5">and methods map</span>
 <span class="fragment current-only" data-code-focus="12-13">Because values in map are references we need special copy and move constructors</span>
@@ -941,7 +941,7 @@ struct MapDispatcher {
 And if we want to use it for our api we just call special function
 
 ```c++
-const auto api = use_unordered_map_dispatcher(
+const auto api = use_unordered_map_router(
   "users"_l / user_id / (
     "contacts"_l / contact_id / "GET"_m(get_contact)
     | "lists"_l / "PUT"_m(create_list)
@@ -968,7 +968,7 @@ struct MyMap<hana::tuple<Ts ...>> {
   using Type = typename MyMap<Ts ...>::Type;
 };
 
-const auto api = use_map_dispatcher<MyMap>(/* ... */);
+const auto api = use_map_router<MyMap>(/* ... */);
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -1031,6 +1031,8 @@ const auto api =
 
 </script></section><section data-markdown><script type="text/template">
 
+### Without unordered_map
+
   <canvas data-chart="bar">
   <!--
   {
@@ -1062,7 +1064,7 @@ const auto api =
 
 </script></section><section data-markdown><script type="text/template">
 
-### Single level with integers
+### Single level with integers with known input
 
   <canvas data-chart="line">
   <!--
@@ -1071,22 +1073,22 @@ const auto api =
       "labels": [1, 2, 4, 8, 16, 32],
       "datasets": [{
         "data": [20, 29, null],
-        "label": "naive",
+        "label": "naive, ns",
         "fill": false,
         "lineTension": 0
       }, {
         "data": [null, 29, 32, 34],
-        "label": "naive with switch",
+        "label": "naive with switch, ns",
         "fill": false,
         "lineTension": 0
       }, {
         "data": [20, 29, 33, 37, 39, 42],
-        "label": "binary search",
+        "label": "binary search, ns",
         "fill": false,
         "lineTension": 0
       }, {
         "data": [20, 29, 41, 46, 46, 48],
-        "label": "unordered map",
+        "label": "unordered map, ns",
         "fill": false,
         "lineTension": 0
       }]
@@ -1106,7 +1108,7 @@ const auto api =
 
 </script></section><section data-markdown><script type="text/template">
 
-### 4 levels
+### 4 levels with known input
 3 with 4 locations each, 4 methods
 
   <canvas data-chart="bar">
@@ -1116,7 +1118,7 @@ const auto api =
       "labels": ["binary search", "unordered map"],
       "datasets": [{
         "data": [244, 188],
-        "label": "naive",
+        "label": "cpu time, ns",
         "backgroundColor": "rgba(20, 220, 220, 1)"
       }]
     },
