@@ -307,9 +307,12 @@ struct Base {
   using It = std::vector<std::string>::const_iterator;
   using StringCref = std::reference_wrapper<const std::string>;
 
-  virtual int dispatch0(It it, It end, const std::tuple<>& arguments) const = 0;
-  virtual int dispatch1(It it, It end, const std::tuple<StringCref>& arguments) const = 0;
-  virtual int dispatch2(It it, It end, const std::tuple<StringCref, StringCref>& arguments) = 0;
+  virtual int dispatch0(It it, It end,
+                        const std::tuple<>& arguments) const = 0;
+  virtual int dispatch1(It it, It end,
+                        const std::tuple<StringCref>& arguments) const = 0;
+  virtual int dispatch2(It it, It end,
+                        const std::tuple<StringCref, StringCref>& arguments) = 0;
   // ...
 };
 ```
@@ -358,7 +361,7 @@ using Bar = Endpoint<BarVisitor>;
 
 </script></section><section data-markdown><script type="text/template">
 
-### Why do need virtual at first?
+### Why do we need virtual at first place?
 
 If we can't do this...
 ```c++
@@ -386,17 +389,18 @@ void delete_tag(UsersId user_id, TagId tag_id, Stream& stream);
 
 const auto api =
   "users"_l / user_id / (
-  "contacts"_l / contact_id / "GET"_m(get_contact)
-  | "lists"_l / "PUT"_m(create_list)
-  | "tags"_l / tag_id / "DELETE"_m(delete_tag)
+    "contacts"_l / contact_id / "GET"_m(get_contact)
+    | "lists"_l / "PUT"_m(create_list)
+    | "tags"_l / tag_id / "DELETE"_m(delete_tag)
   );
 
 template <class Api>
-void dispatch(const Api& api, const std::vector<std::string>& path, const std::string& method);
+void dispatch(const Api& api, const std::vector<std::string>& path,
+              const std::string& method);
 ```
 
 <span class="fragment current-only" data-code-focus="5-10">Define API by DSL using overloaded operators</span>
-<span class="fragment current-only" data-code-focus="12-13">Call API method using given input</span>
+<span class="fragment current-only" data-code-focus="12-14">Call API method using given input</span>
 
 </script></section><section data-markdown><script type="text/template">
 
@@ -573,7 +577,7 @@ using API = Tree<hana::tuple<
 </script></section><section data-markdown><script type="text/template">
 
 ```c++
-// hana::find_if
+hana::find_if(nodes, [] (const auto& v) { ... });
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -586,10 +590,12 @@ using API = Tree<hana::tuple<
 
 </script></section><section data-markdown><script type="text/template">
 
+### Binary search for tuple
+
 ```c++
-template <class Result, class ... T, class Value, class Less, class Equal, class Function>
+template <class Result, class ... T, class Value, class Less, class Equal, class F>
 constexpr std::optional<Result> binary_search(const hana::tuple<T ...>& range,
-    const Value& value, Less&& less, Equal&& equal, Function&& function) {
+    const Value& value, Less&& less, Equal&& equal, F&& function) {
   return detail::binary_search_impl<std::size_t(0), sizeof ... (T), Result>(
     range,
     value,
@@ -603,17 +609,19 @@ constexpr std::optional<Result> binary_search(const hana::tuple<T ...>& range,
 
 </script></section><section data-markdown><script type="text/template">
 
+### Binary search for tuple
+
 ```c++
 template <std::size_t low, std::size_t high, class Result, class Range, class Value,
-            class Less, class Equal, class Function>
+          class Less, class Equal, class F>
 constexpr std::enable_if_t<(high - low >= 2), std::optional<Result>> binary_search_impl(
-    const Range& range, const Value& value, Less&& less, Equal&& equal, Function&& function) {
+    const Range& range, const Value& value, Less&& less, Equal&& equal, F&& function) {
   if (less(value, hana::at_c<hana::size_c<(low + high) / 2>>(range))) {
     return binary_search_impl<low, (low + high) / 2, Result>(range, value,
-      std::forward<Less>(less), std::forward<Equal>(equal), std::forward<Function>(function));
+      std::forward<Less>(less), std::forward<Equal>(equal), std::forward<F>(function));
   } else {
     return binary_search_impl<(low + high) / 2, high, Result>(range, value,
-      std::forward<Less>(less), std::forward<Equal>(equal), std::forward<Function>(function));
+      std::forward<Less>(less), std::forward<Equal>(equal), std::forward<F>(function));
   }
 }
 ```
@@ -622,12 +630,12 @@ constexpr std::enable_if_t<(high - low >= 2), std::optional<Result>> binary_sear
 
 </script></section><section data-markdown><script type="text/template">
 
-For one element just check equality
+For single element just check equality
 ```c++
 template <std::size_t low, std::size_t high, class Result, class Range, class Value,
-            class Less, class Equal, class Function>
+            class Less, class Equal, class F>
 constexpr std::enable_if_t<(high - low == 1), std::optional<Result>> binary_search_impl(
-    const Range& range, const Value& value, Less&&, Equal&& equal, Function&& function) {
+    const Range& range, const Value& value, Less&&, Equal&& equal, F&& function) {
   if (equal(value, hana::at_c<low>(range))) {
     return function(hana::at_c<low>(range));
   } else {
@@ -649,24 +657,27 @@ constexpr std::enable_if_t<(high == low), std::optional<Result>> binary_search_i
 
 </script></section><section data-markdown><script type="text/template">
 
-Now alternative operator requires ordering
+Now alternative operator should return ordered tuple
 ```c++
 template <class ... Lhs, class ... Rhs>
 constexpr auto operator |(const Tree<hana::tuple<Lhs ...>>& lhs,
                           const Tree<hana::tuple<Rhs ...>>& rhs) {
   return tree(hana::concat(
       hana::sort.by(hana::ordering(hana::first),
-        hana::concat(hana::filter(lhs.value, is_location), hana::filter(rhs.value, is_location))
+        hana::concat(hana::filter(lhs.value, is_location),
+                     hana::filter(rhs.value, is_location))
       ),
       hana::concat(hana::sort.by(hana::ordering(hana::first),
-        hana::concat(hana::filter(lhs.value, is_method), hana::filter(rhs.value, is_method))
-      ),
-      hana::concat(
-        hana::filter(lhs.value, is_handler),
+          hana::concat(hana::filter(lhs.value, is_method),
+                       hana::filter(rhs.value, is_method))
+        ),
         hana::concat(
-          hana::filter(rhs.value, is_handler),
-          hana::concat(hana::filter(lhs.value, is_parameter), hana::filter(rhs.value, is_parameter))
-  )))));
+          hana::filter(lhs.value, is_handler),
+          hana::concat(
+            hana::filter(rhs.value, is_handler),
+            hana::concat(hana::filter(lhs.value, is_parameter),
+                         hana::filter(rhs.value, is_parameter))
+    )))));
 }
 ```
 
@@ -735,48 +746,47 @@ using CallResult = std::variant<
 </script></section><section data-markdown><script type="text/template">
 
 ```c++
-template <class Result, class Context, class Parameters, class ... Key, class ... Node,
-          class ... Args>
-constexpr CallResult<Result> dispatch_for_tuple(const Context& context,
-    const hana::tuple<hana::pair<Key, Node> ...>& node, Parameters&& parameters,
+template <class R, class C, class P, class ... Key, class ... Node, class ... Args>
+constexpr CallResult<R> dispatch_for_tuple(const C& context,
+    const hana::tuple<hana::pair<Key, Node> ...>& node, P&& parameters,
     Args&& ... args) {
   if (!at_path_end(context)) {
-    if (auto result = dispatch_for_location<Result>(context, hana::filter(node, is_location),
-                                                    std::forward<Args>(args) ...)) {
+    if (auto result = dispatch_for_location<R>(context, hana::filter(node, is_location),
+                                               std::forward<Args>(args) ...)) {
         return std::move(result).value();
     }
-    return dispatch_for_parameter<Result>(context, hana::filter(node, is_parameter),
-                                          std::forward<Args>(args) ...);
-  }
-  return dispatch_for_method<Result>(context, hana::filter(node, is_method),
+    return dispatch_for_parameter<R>(context, hana::filter(node, is_parameter),
                                      std::forward<Args>(args) ...);
+  }
+  return dispatch_for_method<R>(context, hana::filter(node, is_method),
+                                std::forward<Args>(args) ...);
 }
 ```
 
-<span class="fragment current-only" data-code-focus="6">If current path iterator is not the end of the path</span>
-<span class="fragment current-only" data-code-focus="7-9">Try to use path value as location</span>
-<span class="fragment current-only" data-code-focus="9">Return if it is</span>
-<span class="fragment current-only" data-code-focus="11-12">Otherwise use path value as parameter</span>
-<span class="fragment current-only" data-code-focus="14-15">If path is ended use method</span>
+<span class="fragment current-only" data-code-focus="5">If current path iterator is not the end of the path</span>
+<span class="fragment current-only" data-code-focus="6-7">Try to use path value as location</span>
+<span class="fragment current-only" data-code-focus="8">Return if it is</span>
+<span class="fragment current-only" data-code-focus="10-11">Otherwise use path value as parameter</span>
+<span class="fragment current-only" data-code-focus="13-14">If path is ended use method</span>
 
 </script></section><section data-markdown><script type="text/template">
 
 ```c++
-template <class Result, class Context, class Parameters, class ... Args>
-constexpr std::optional<CallResult<Result>> dispatch_for_location(const Context&,
+template <class R, class Context, class Parameters, class ... Args>
+constexpr std::optional<CallResult<R>> dispatch_for_location(const Context&,
     const hana::tuple<>& /* node */, Parameters&&, Args&& ...) {
   return {};
 }
 
-template <class Result, class Context, class Parameters, class ... Key, class ... Node,
-          class ... Args>
-constexpr std::optional<CallResult<Result>> dispatch_for_location(const Context& context,
+template <class R, class C, class P, class ... Key, class ... Node, class ... Args>
+constexpr std::optional<CallResult<R>> dispatch_for_location(const C& context,
     const hana::tuple<hana::pair<Location<Key>, Node> ...>& node,
-    Parameters&& parameters, Args&& ... args) {
-  return binary_search<CallResult<Result>>(node, *context.path_it, Less {}, Equal {},
+    P&& parameters, Args&& ... args) {
+  return binary_search<CallResult<R>>(node, get_path_value(context), Less {}, Equal {},
     return_monostate_on_void([&] (const auto& next) {
       return dispatch_for_tuple<Result>(
-        with_next_path_iterator(context), hana::second(next),
+        with_next_path_iterator(context),
+        hana::second(next),
         std::forward<Parameters>(parameters), std::forward<Args>(args) ...
       );
     })
@@ -786,7 +796,342 @@ constexpr std::optional<CallResult<Result>> dispatch_for_location(const Context&
 
 <span class="fragment current-only" data-code-focus="3-4">If there is no locations return nullopt</span>
 <span class="fragment current-only" data-code-focus="12-19">If there are locations, use binary search to find one</span>
-<span class="fragment current-only" data-code-focus="14-17">And do recursive call for next path value</span>
+<span class="fragment current-only" data-code-focus="13-17">And do recursive call for next path value</span>
+<span class="fragment current-only" data-code-focus="14">Using context with next path iterator</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+```c++
+template <class R, class C, class Parameters, class T, class Node, class ... Args>
+constexpr CallResult<R> dispatch_for_parameter(const C& context,
+    const hana::tuple<hana::pair<Parameter<T>, Node>>& node,
+    Parameters&& parameters, Args&& ... args) {
+  return dispatch_for_tuple<R>(
+    with_next_path_iterator(context),
+    hana::second(hana::front(node)),
+    hana::append(std::forward<Parameters>(parameters),
+                 T {get_path_value(context)}),
+    std::forward<Args>(args) ...
+  );
+}
+```
+
+<span class="fragment current-only" data-code-focus="7">Use single existing parameter node, checked by static_assert</span>
+<span class="fragment current-only" data-code-focus="8-9">Construct parameter value and append to tuple of parameters</span>
+<span class="fragment current-only" data-code-focus="5-11">And do recursive call for next path value</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+```c++
+template <class R, class Context, class Parameters, class ... Args>
+constexpr CallResult<R> dispatch_for_method(const Context&,
+    const hana::tuple<>&, Parameters&&, Args&& ...) noexcept {
+  return ErrorCode::methodNotFound;
+}
+
+template <class R, class C, class P, class ... Name, class ... Node, class ... Args>
+constexpr CallResult<R> dispatch_for_method(const C& context,
+    const hana::tuple<hana::pair<Method<Name>, Node> ...>& node,
+        P&& params, Args&& ... args) {
+  auto result = binary_search<CallResult<R>>(node, context.method, Less {}, Equal {},
+    return_monostate_on_void([&] (const auto& next) {
+        return hana::unpack(std::forward<P>(params), [&] (auto&& ... p) {
+            return hana::second(next).impl(std::move(p) ...,
+                                           std::forward<Args>(args) ...);
+        });
+    })
+  );
+  return result ? std::move(result).value() : ErrorCode::methodNotFound;
+}
+```
+
+<span class="fragment current-only" data-code-focus="11-18">Find node by method</span>
+<span class="fragment current-only" data-code-focus="13-15">And call endpoint handler with given parameters</span>
+<span class="fragment current-only" data-code-focus="19">Return handler result or error</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+### Can we do any better?
+
+</script></section><section data-markdown><script type="text/template">
+
+### Let's reduce search complexity from O(log(N)) to O(1)
+
+</script></section><section data-markdown><script type="text/template">
+
+### By using unordered map!
+
+</script></section><section data-markdown><script type="text/template">
+
+### But what is the type of value?
+
+</script></section><section data-markdown><script type="text/template">
+
+### std::variant!
+
+</script></section><section data-markdown><script type="text/template">
+
+```c++
+template <class T>
+struct Value {};
+
+template <class ... Key, class ... Node>
+struct Value<hana::tuple<hana::pair<Key, Node> ...>> {
+    using type = std::variant<std::reference_wrapper<const hana::pair<Key, Node>> ...>;
+};
+
+template <>
+struct Value<hana::tuple<>> {
+    using type = std::monostate;
+};
+
+template <class T>
+using ValueType = typename Value<std::decay_t<T>>::type;
+```
+
+<span class="fragment current-only" data-code-focus="1-2">By default we dont't need any type</span>
+<span class="fragment current-only" data-code-focus="4-7">Define only for tuple</span>
+<span class="fragment current-only" data-code-focus="9-12">Special case when there is no elements</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+Map type is customizable by special traits class template
+
+```c++
+template <class ... Ts>
+struct UnorderedMapTraits {
+  using Type = std::unordered_map<
+    KeyType<hana::tuple<Ts ...>>,
+    ValueType<hana::tuple<Ts ...>>
+  >;
+};
+
+template <class ... Ts>
+struct UnorderedMapTraits<hana::tuple<Ts ...>> {
+  using Type = typename UnorderedMapTraits<Ts ...>::Type;
+};
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+```c++
+template <template <class ...> class MapTraits, class ... Ts>
+struct MapDispatcher {
+  hana::tuple<Ts ...> nodes;
+  typename LocationsMapTraits<MapTraits, Ts ...>::Type locations;
+  typename MethodsMapTraits<MapTraits, Ts ...>::Type methods;
+
+  MapDispatcher() = default;
+  MapDispatcher(hana::tuple<Ts ...> nodes) : nodes(std::move(nodes)) {
+      fill_locations(this->nodes, locations);
+      fill_methods(this->nodes, methods);
+  }
+  MapDispatcher(const MapDispatcher& other)  { ... }
+  MapDispatcher(MapDispatcher&& other) { ... }
+};
+```
+
+<span class="fragment current-only" data-code-focus="3">Map dispatcher contains original nodes</span>
+<span class="fragment current-only" data-code-focus="4">locations map</span>
+<span class="fragment current-only" data-code-focus="5">and methods map</span>
+<span class="fragment current-only" data-code-focus="12-13">Because values in map are references we need special copy and move constructors</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+And if we want to use it for our api we just call special function
+
+```c++
+const auto api = use_unordered_map_dispatcher(
+  "users"_l / user_id / (
+    "contacts"_l / contact_id / "GET"_m(get_contact)
+    | "lists"_l / "PUT"_m(create_list)
+    | "tags"_l / tag_id / "DELETE"_m(delete_tag)
+  )
+);
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+Or for custom map
+
+```c++
+template <class ... Ts>
+struct MyMap {
+  using Type = std::map<
+    KeyType<hana::tuple<Ts ...>>,
+    ValueType<hana::tuple<Ts ...>>
+  >;
+};
+
+template <class ... Ts>
+struct MyMap<hana::tuple<Ts ...>> {
+  using Type = typename MyMap<Ts ...>::Type;
+};
+
+const auto api = use_map_dispatcher<MyMap>(/* ... */);
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+### But how is this all efficient?
+
+</script></section><section data-markdown><script type="text/template">
+
+### Benchmark
+
+```c++
+const auto api =
+    "users"_l / (
+        parameter<UserId> / (
+            "contacts"_l / (
+                "GET"_m(get_all_contacts)
+                | "PUT"_m(create_contact)
+                | parameter<ContactId> / (
+                    "GET"_m(get_contact)
+                    | "DELETE"_m(delete_contact)
+                    | "POST"_m(update_contact)
+                )
+            )
+            | "tags"_l / (
+                "GET"_m(get_all_tags)
+                | "PUT"_m(create_tag)
+                | parameter<TagId> / (
+                    "GET"_m(get_tag)
+                    | "DELETE"_m(delete_tag)
+                    | "POST"_m(update_tag)
+                )
+            )
+        )
+    )
+;
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+<canvas data-chart="bar">
+<!--
+{
+  "data": {
+    "labels": [
+      "naive",
+      "virtual methods",
+      "virtual methods & variant",
+      "binary search",
+      "unordered map"
+    ],
+    "datasets": [{
+      "data": [436, 479, 511, 450, 13202],
+      "label": "cpu time, ns",
+      "backgroundColor": "rgba(20, 220, 220, 1)"
+    }]
+  }
+}
+-->
+</canvas>
+
+</script></section><section data-markdown><script type="text/template">
+
+  <canvas data-chart="bar">
+  <!--
+  {
+    "data": {
+      "labels": [
+        "naive",
+        "virtual methods",
+        "virtual methods & variant",
+        "binary search"
+      ],
+      "datasets": [{
+        "data": [436, 479, 511, 450],
+        "label": "cpu time, ns",
+        "backgroundColor": "rgba(20, 220, 220, 1)"
+      }]
+    },
+    "options": {
+        "scales": {
+            "yAxes": [{
+                "ticks": {
+                    "beginAtZero": true
+                }
+            }]
+        }
+    }
+  }
+  -->
+  </canvas>
+
+</script></section><section data-markdown><script type="text/template">
+
+### Single level with integers
+
+  <canvas data-chart="line">
+  <!--
+  {
+    "data": {
+      "labels": [1, 2, 4, 8, 16, 32],
+      "datasets": [{
+        "data": [20, 29, null],
+        "label": "naive",
+        "fill": false,
+        "lineTension": 0
+      }, {
+        "data": [null, 29, 32, 34],
+        "label": "naive with switch",
+        "fill": false,
+        "lineTension": 0
+      }, {
+        "data": [20, 29, 33, 37, 39, 42],
+        "label": "binary search",
+        "fill": false,
+        "lineTension": 0
+      }, {
+        "data": [20, 29, 41, 46, 46, 48],
+        "label": "unordered map",
+        "fill": false,
+        "lineTension": 0
+      }]
+    },
+    "options": {
+        "scales": {
+            "yAxes": [{
+                "ticks": {
+                    "beginAtZero": true
+                }
+            }]
+        }
+    }
+  }
+  -->
+  </canvas>
+
+</script></section><section data-markdown><script type="text/template">
+
+### 4 levels
+3 with 4 locations each, 4 methods
+
+  <canvas data-chart="bar">
+  <!--
+  {
+    "data": {
+      "labels": ["binary search", "unordered map"],
+      "datasets": [{
+        "data": [244, 188],
+        "label": "naive",
+        "backgroundColor": "rgba(20, 220, 220, 1)"
+      }]
+    },
+    "options": {
+        "scales": {
+            "yAxes": [{
+                "ticks": {
+                    "beginAtZero": true
+                }
+            }]
+        }
+    }
+  }
+  -->
+  </canvas>
 
           </script>
         </section>
@@ -811,7 +1156,29 @@ constexpr std::optional<CallResult<Result>> dispatch_for_location(const Context&
           { src: 'highlight/highlight.pack.js' },
           { src: 'reveal.js/node_modules/reveal-code-focus/reveal-code-focus.js', callback: function() { RevealCodeFocus(); } },
           { src: 'plugins/reveal-line-numbers/line-numbers.js' },
-        ]
+          { src: 'plugins/reveal.js-plugins/chart/Chart.min.js' },
+          { src: 'plugins/reveal.js-plugins/chart/csv2chart.js' },
+          { src: 'plugins/reveal.js-plugins/chart/sampler.js' },
+        ],
+        chart: {
+          defaults: {
+            global: {
+              title: { fontColor: "#FFF", defaultFontSize: 16 },
+              legend: {
+                labels: { fontColor: "#FFF", defaultFontSize: 16 },
+              },
+            },
+            scale: {
+              scaleLabel: { fontColor: "#FFF", defaultFontSize: 16 },
+              gridLines: { color: "#FFF", zeroLineColor: "#FFF" },
+              ticks: { fontColor: "#FFF", defaultFontSize: 16 },
+            }
+          },
+          line: { borderColor: [ "rgba(20,220,220,.8)" , "rgba(220,120,120,.8)", "rgba(20,120,220,.8)" ], "borderDash": [ [5,10], [0,0] ]},
+          bar: { backgroundColor: [ "rgba(20,220,220,.8)" , "rgba(220,120,120,.8)", "rgba(20,120,220,.8)" ], defaultFontSize: 16 },
+          pie: { backgroundColor: [ ["rgba(0,0,0,.8)" , "rgba(220,20,20,.8)", "rgba(20,220,20,.8)", "rgba(220,220,20,.8)", "rgba(20,20,220,.8)"] ]},
+          radar: { borderColor: [ "rgba(20,220,220,.8)" , "rgba(220,120,120,.8)", "rgba(20,120,220,.8)" ]},
+        },
       });
 
       // Add the line-numbers class to all code blocks, so that code examples
