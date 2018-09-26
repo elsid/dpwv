@@ -7,3 +7,6 @@
 [submodule "reveal.js"]
 	path = reveal.js
 	url = https://github.com/hakimel/reveal.js.git
+[submodule "plugins/reveal-line-numbers"]
+	path = plugins/reveal-line-numbers
+	url = https://github.com/mikemiles86/reveal-line-numbers.git
