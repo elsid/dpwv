@@ -362,7 +362,7 @@ void get_speaker(ConferenceId conference_id, SpeakerId speaker, Stream& stream);
 void add_room(ConferenceId conference_id, Stream& stream);
 void remove_talk(ConferenceId conference_id, TalkId talk_id, Stream& stream);
 
-const auto api =
+constexpr auto api =
   "conferences"_l / conference_id / (
     "speakers"_l / speaker_id / "GET"_m(get_speaker)
     | "rooms"_l / "PUT"_m(add_room)
@@ -955,7 +955,7 @@ const auto api = use_map_router<MyMap>(/* ... */);
 ### Benchmark
 
 ```c++
-const auto api =
+constexpr auto api =
   "conferences"_l / (
     parameter<ConferenceId> / (
       "speakers"_l / (
