@@ -36,3 +36,12 @@
 .line.focus .hljs-strong { font-weight: bold; }
 
 .yellow-slide .line.focus:nth-child(2) { background: yellow; }
+
+.reveal h1,
+.reveal h2,
+.reveal h3,
+.reveal h4,
+.reveal h5,
+.reveal h6 {
+  text-transform: none;
+}
