@@ -97,7 +97,7 @@ void bar(Buzz);
 // If type is foo should construct Fizz from given value and call foo.
 // If type is bar should construct Buzz from given value and call bar.
 // Otherwise should throw an exception.
-void route(std::string type, std::string value);
+void route(std::string_view type, std::string_view value);
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -105,11 +105,11 @@ void route(std::string type, std::string value);
 ### If-else solution
 
 ```c++
-void route(std::string type, std::string value) {
+void route(std::string_view type, std::string_view value) {
   if (type == "foo") {
-    foo(Fizz {std::move(value)});
+    foo(Fizz {value});
   } else if (type == "bar") {
-    bar(Buzz {std::move(value)});
+    bar(Buzz {value});
   } else {
     using std::string_literals;
     throw std::invalid_argument("Unknown type: "s + type);
@@ -132,7 +132,7 @@ void bbb(Bfzz);
 void fff(Ffzz);
 void wtf(Ziff);
 
-void route(std::string type, std::string value);
+void route(std::string_view type, std::string_view value);
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -140,17 +140,17 @@ void route(std::string type, std::string value);
 ### Ok, no problem
 
 ```c++
-void route(std::string type, std::string value) {
-  if (type == "foo") foo(Fizz {std::move(value)});
-  else if (type == "bar") bar(Buzz {std::move(value)});
-  else if (type == "far") far(Fuzz {std::move(value)});
-  else if (type == "boo") boo(Bizz {std::move(value)});
-  else if (type == "bor") boo(Bizz {std::move(value)});
-  else if (type == "fao") fao(Ffff {std::move(value)});
-  else if (type == "bao") bao(Bbbb {std::move(value)});
-  else if (type == "bbb") bbb(Bfzz {std::move(value)});
-  else if (type == "fff") fff(Ffzz {std::move(value)});
-  else if (type == "wtf") wtf(Ziff {std::move(value)});
+void route(std::string_view type, std::string_view value) {
+  if (type == "foo") foo(Fizz {value});
+  else if (type == "bar") bar(Buzz {value});
+  else if (type == "far") far(Fuzz {value});
+  else if (type == "boo") boo(Bizz {value});
+  else if (type == "bor") boo(Bizz {value});
+  else if (type == "fao") fao(Ffff {value});
+  else if (type == "bao") bao(Bbbb {value});
+  else if (type == "bbb") bbb(Bfzz {value});
+  else if (type == "fff") fff(Ffzz {value});
+  else if (type == "wtf") wtf(Ziff {value});
   else throw std::invalid_argument("Go home");
 }
 ```
@@ -166,17 +166,17 @@ void route(std::string type, std::string value) {
 Was there any typo?
 
 </script></section><section><pre><code data-trim>
-void route(std::string type, std::string value) {
-  if (type == "foo") foo(Fizz {std::move(value)});
-  else if (type == "bar") bar(Buzz {std::move(value)});
-  else if (type == "far") far(Fuzz {std::move(value)});
-  else if (type == "boo") boo(Bizz {std::move(value)});
-  else if (type == "bor") <mark>boo(Bizz</mark> {std::move(value)});
-  else if (type == "fao") fao(Ffff {std::move(value)});
-  else if (type == "bao") bao(Bbbb {std::move(value)});
-  else if (type == "bbb") bbb(Bfzz {std::move(value)});
-  else if (type == "fff") fff(Ffzz {std::move(value)});
-  else if (type == "wtf") wtf(Ziff {std::move(value)});
+void route(std::string_view type, std::string_view value) {
+  if (type == "foo") foo(Fizz {value});
+  else if (type == "bar") bar(Buzz {value});
+  else if (type == "far") far(Fuzz {value});
+  else if (type == "boo") boo(Bizz {value});
+  else if (type == "bor") <mark>boo(Bizz</mark> {value});
+  else if (type == "fao") fao(Ffff {value});
+  else if (type == "bao") bao(Bbbb {value});
+  else if (type == "bbb") bbb(Bfzz {value});
+  else if (type == "fff") fff(Ffzz {value});
+  else if (type == "wtf") wtf(Ziff {value});
   else throw std::invalid_argument("Go home");
 }
 
@@ -186,14 +186,14 @@ void route(std::string type, std::string value) {
 
 ```c++
 struct Base {
-  virtual void call(std::string value) = 0;
+  virtual void call(std::string_view value) = 0;
 };
 using Map = std::map<Type, std::unique_ptr<Base>>;
-void route(Map alternatives, std::string type, std::string value) {
-  alternatives.at(make_type(type))->call(std::move(value));
+void route(Map alternatives, std::string_view type, std::string_view value) {
+  alternatives.at(make_type(type))->call(value);
 }
 struct Foo : Base {
-  void call(std::string value) override {
+  void call(std::string_view value) override {
     const Fizz typed_value {value};
     // ...
   }
@@ -215,12 +215,12 @@ void bar(Fizz, Buzz);
 
 ```c++
 struct Interface {
-  using It = std::vector<std::string>::const_iterator;
+  using It = std::vector<std::string_view>::const_iterator;
 
   virtual int route0(It it, It end) const = 0;
-  virtual int route1(It it, It end, const std::string& arg0) const = 0;
-  virtual int route2(It it, It end, const std::string& arg0,
-                      const std::string& arg1) const = 0;
+  virtual int route1(It it, It end, std::string_view arg0) const = 0;
+  virtual int route2(It it, It end, std::string_view arg0,
+                     std::string_view arg1) const = 0;
   // ...
 };
 ```
@@ -231,9 +231,9 @@ struct Interface {
 
 ```c++
 struct Router : Interface {
-  std::map<std::string, std::shared_ptr<Interface>> alternatives;
-  void route2(It it, It end, const std::string& arg0,
-                  const std::string& arg1) const override {
+  std::map<std::string, std::unique_ptr<Interface>> alternatives;
+  void route2(It it, It end, std::string_view arg0,
+              std::string_view arg1) const final {
     if (it == end) {
       throw std::invalid_argument("path is not found");
     }
@@ -255,7 +255,7 @@ struct Router : Interface {
 
 ```c++
 struct Foo : Interface {
-  void route1(It, It, const std::string& arg0) const override {
+  void route1(It, It, std::string_view arg0) const override {
     return foo(Fizz {arg0});
   }
 };
@@ -263,11 +263,11 @@ struct Bar : Interface {
   void route0(It, It) const {
     throw std::logic_error("invalid call");
   }
-  void route1(It, It, const std::string&) const {
+  void route1(It, It, std::string_view) const {
     throw std::logic_error("invalid call");
   }
-  void route2(It, It, const std::string& arg0,
-                  const std::string& arg1) const override {
+  void route2(It, It, std::string_view arg0,
+              std::string_view arg1) const override {
     return bar(Fizz {arg0}, Buzz {arg1});
   }
 };
@@ -280,14 +280,14 @@ struct Bar : Interface {
 ```c++
 struct Base {
   using It = std::vector<std::string>::const_iterator;
-  using StringCref = std::reference_wrapper<const std::string>;
 
   virtual int route0(It it, It end,
-                        const std::tuple<>& arguments) const = 0;
+                     const std::tuple<>& arguments) const = 0;
   virtual int route1(It it, It end,
-                        const std::tuple<StringCref>& arguments) const = 0;
+                     const std::tuple<std::string_view>& arguments) const = 0;
   virtual int route2(It it, It end,
-                        const std::tuple<StringCref, StringCref>& arguments) = 0;
+                     const std::tuple<std::string_view,
+                                      std::string_view>& arguments) = 0;
   // ...
 };
 ```
@@ -315,7 +315,7 @@ struct Base {
 ```c++
 template <class Visitor>
 struct Endpoint : Interface {
-  void route(It, It, const std::string&, const Arguments& arguments) const override {
+  void route(It, It, std::string_view, const Arguments& arguments) const override {
     return std::visit(
       [] (const auto& arguments) { return hana::unpack(arguments, Visitor {}); },
       arguments
@@ -371,7 +371,7 @@ const auto api =
 
 template <class Api>
 void route(const Api& api, const std::vector<std::string>& path,
-           const std::string& method);
+           std::string_view method);
 ```
 
 <span class="fragment current-only" data-code-focus="5-10">Define API by DSL using overloaded operators</span>
