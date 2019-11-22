@@ -956,29 +956,24 @@ const auto api = use_map_router<MyMap>(/* ... */);
 
 ```c++
 const auto api =
-    "conferences"_l / (
-        parameter<ConferenceId> / (
-            "speakers"_l / (
-                "GET"_m(get_all_speakers)
-                | "PUT"_m(create_speaker)
-                | parameter<SpeakerId> / (
-                    "GET"_m(get_speaker)
-                    | "DELETE"_m(remove_speaker)
-                    | "POST"_m(update_speaker)
-                )
-            )
-            | "talks"_l / (
-                "GET"_m(get_all_talks)
-                | "PUT"_m(create_talk)
-                | parameter<TalkId> / (
-                    "GET"_m(get_talk)
-                    | "DELETE"_m(remove_talk)
-                    | "POST"_m(update_talk)
-                )
-            )
+  "conferences"_l / (
+    parameter<ConferenceId> / (
+      "speakers"_l / (
+        "GET"_m(get_all_speakers) | "PUT"_m(create_speaker)
+        | parameter<SpeakerId> / (
+          "GET"_m(get_speaker)
+          | "DELETE"_m(remove_speaker) | "POST"_m(update_speaker)
         )
+      )
+      | "talks"_l / (
+        "GET"_m(get_all_talks) | "PUT"_m(create_talk)
+        | parameter<TalkId> / (
+          "GET"_m(get_talk)
+          | "DELETE"_m(remove_talk) | "POST"_m(update_talk)
+        )
+      )
     )
-;
+  );
 ```
 
 </script></section><section data-markdown><script type="text/template">
