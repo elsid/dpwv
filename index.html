@@ -179,28 +179,6 @@ void route(std::string type, std::string value) {
   else if (type == "wtf") wtf(Ziff {std::move(value)});
   else throw std::invalid_argument("Go home");
 }
-</code></pre></section><section data-markdown><script type="text/template">
-
-### How about little optimization?
-
-```c++
-enum Type;
-Type make_type(std::string);
-void route(std::string type, std::string value) {
-  switch (make_type(type)) {
-    case Type::foo: foo(Fizz {std::move(value)});
-    case Type::bar: bar(Buzz {std::move(value)});
-    case Type::far: far(Fuzz {std::move(value)});
-    case Type::boo: boo(Bizz {std::move(value)});
-    case Type::bor: bor(Zzzz {std::move(value)});
-    case Type::fao: fao(Ffff {std::move(value)});
-    case Type::bao: bao(Bbbb {std::move(value)});
-    case Type::bbb: bbb(Bfzz {std::move(value)});
-    case Type::fff: fff(Ffzz {std::move(value)});
-    case Type::wtf: wtf(Ziff {std::move(value)});
-  }
-}
-```
 
 </script></section><section data-markdown><script type="text/template">
 
