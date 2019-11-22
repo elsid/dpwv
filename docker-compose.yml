@@ -5,6 +5,7 @@ services:
     image: node
     volumes:
     - .:/code
+    - ./node:/root
     working_dir: /code
     entrypoint: ./run.sh
     ports:
