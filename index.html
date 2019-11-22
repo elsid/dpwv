@@ -44,11 +44,11 @@
 
 Handle any of given HTTP-requests
 ```http
-GET /users/23474322/contacts/31 HTTP/1.1
+GET /conferences/cppnow2020/speakers/326 HTTP/1.1
 
-PUT /users/23474322/lists HTTP/1.1
+PUT /conferences/cppnow2020/rooms HTTP/1.1
 
-DELETE /users/23474322/tags/3 HTTP/1.1
+DELETE /conferences/cppnow2020/talks/473 HTTP/1.1
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -64,7 +64,7 @@ struct Request {
 
 Request request;
 request.method = "GET";
-request.uri = {"users", "23474322", "contacts", "31"};
+request.uri = {"conferences", "cppnow2020", "speakers", "326"};
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -78,9 +78,9 @@ And we can define state machine which handler to call with given input
 ### Handlers
 
 ```c++
-void get_contact(UsersId user_id, ContactId contact, Response& response);
-void create_list(UsersId user_id, Response& response);
-void delete_tag(UsersId user_id, TagId tag_id, Response& response);
+void get_speaker(ConferenceId conference_id, SpeakerId speaker, Response& response);
+void add_room(ConferenceId conference_id, Response& response);
+void remove_talk(ConferenceId conference_id, TalkId talk_id, Response& response);
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -358,15 +358,15 @@ Back to the original problem...
 ### Back to the original problem
 
 ```c++
-void get_contact(UsersId user_id, ContactId contact, Stream& stream);
-void create_list(UsersId user_id, Stream& stream);
-void delete_tag(UsersId user_id, TagId tag_id, Stream& stream);
+void get_speaker(ConferenceId conference_id, SpeakerId speaker, Stream& stream);
+void add_room(ConferenceId conference_id, Stream& stream);
+void remove_talk(ConferenceId conference_id, TalkId talk_id, Stream& stream);
 
 const auto api =
-  "users"_l / user_id / (
-    "contacts"_l / contact_id / "GET"_m(get_contact)
-    | "lists"_l / "PUT"_m(create_list)
-    | "tags"_l / tag_id / "DELETE"_m(delete_tag)
+  "conferences"_l / conference_id / (
+    "speakers"_l / speaker_id / "GET"_m(get_speaker)
+    | "rooms"_l / "PUT"_m(add_room)
+    | "talks"_l / talk_id / "DELETE"_m(remove_talk)
   );
 
 template <class Api>
@@ -401,7 +401,7 @@ struct LocationTag {};
 template <class T>
 struct Location {
   using address_type = T;
-  using hana_tag = LocationTag;
+  using hana_talk = LocationTag;
 };
 
 template <class T>
@@ -435,7 +435,7 @@ struct HandlerTag {};
 
 template <class T>
 struct Handler {
-  using hana_tag = HandlerTag;
+  using hana_talk = HandlerTag;
   T impl;
 };
 
@@ -454,7 +454,7 @@ struct TreeTag {};
 
 template <class T>
 struct Tree {
-  using hana_tag = TreeTag;
+  using hana_talk = TreeTag;
   T value;
 };
 
@@ -474,13 +474,13 @@ struct ParameterTag {};
 template <class T>
 struct Parameter {
   using value_type = T;
-  using hana_tag = ParameterTag;
+  using hana_talk = ParameterTag;
 };
 
 template <class T>
 constexpr auto parameter = Parameter<std::decay_t<T>> {};
 
-constexpr auto user_id = parameter<UserId>;
+constexpr auto conference_id = parameter<ConferenceId>;
 ```
 
 </script></section><section data-markdown><script type="text/template">
@@ -525,16 +525,16 @@ constexpr auto operator |(const Tree<hana::tuple<Lhs ...>>& lhs,
 ### API object type
 
 ```c++
-using Users = decltype("users"_s);
-using Contacts = decltype("contacts"_s);
-using Tags = decltype("contacts"_s);
+using Conferences = decltype("conferences"_s);
+using Contacts = decltype("speakers"_s);
+using Tags = decltype("speakers"_s);
 using API = Tree<hana::tuple<
-  hana::pair<Location<decltype("users"_s)>, hana::tuple<
-    hana::pair<Location<decltype("contacts"_s)>, hana::tuple<
-      hana::pair<Method<decltype("contacts"_s)>, Handler<decltype(get_all_contacts)>>
+  hana::pair<Location<decltype("conferences"_s)>, hana::tuple<
+    hana::pair<Location<decltype("speakers"_s)>, hana::tuple<
+      hana::pair<Method<decltype("speakers"_s)>, Handler<decltype(get_all_speakers)>>
       // ...
     >>,
-    hana::pair<Location<decltype("tags"_s)>, hana::tuple<
+    hana::pair<Location<decltype("talks"_s)>, hana::tuple<
       // ...
     >>
   >>
@@ -917,10 +917,10 @@ And if we want to use it for our api we just call special function
 
 ```c++
 const auto api = use_unordered_map_router(
-  "users"_l / user_id / (
-    "contacts"_l / contact_id / "GET"_m(get_contact)
-    | "lists"_l / "PUT"_m(create_list)
-    | "tags"_l / tag_id / "DELETE"_m(delete_tag)
+  "conferences"_l / conference_id / (
+    "speakers"_l / speaker_id / "GET"_m(get_speaker)
+    | "rooms"_l / "PUT"_m(add_room)
+    | "talks"_l / talk_id / "DELETE"_m(remove_talk)
   )
 );
 ```
@@ -956,24 +956,24 @@ const auto api = use_map_router<MyMap>(/* ... */);
 
 ```c++
 const auto api =
-    "users"_l / (
-        parameter<UserId> / (
-            "contacts"_l / (
-                "GET"_m(get_all_contacts)
-                | "PUT"_m(create_contact)
-                | parameter<ContactId> / (
-                    "GET"_m(get_contact)
-                    | "DELETE"_m(delete_contact)
-                    | "POST"_m(update_contact)
+    "conferences"_l / (
+        parameter<ConferenceId> / (
+            "speakers"_l / (
+                "GET"_m(get_all_speakers)
+                | "PUT"_m(create_speaker)
+                | parameter<SpeakerId> / (
+                    "GET"_m(get_speaker)
+                    | "DELETE"_m(remove_speaker)
+                    | "POST"_m(update_speaker)
                 )
             )
-            | "tags"_l / (
-                "GET"_m(get_all_tags)
-                | "PUT"_m(create_tag)
-                | parameter<TagId> / (
-                    "GET"_m(get_tag)
-                    | "DELETE"_m(delete_tag)
-                    | "POST"_m(update_tag)
+            | "talks"_l / (
+                "GET"_m(get_all_talks)
+                | "PUT"_m(create_talk)
+                | parameter<TalkId> / (
+                    "GET"_m(get_talk)
+                    | "DELETE"_m(remove_talk)
+                    | "POST"_m(update_talk)
                 )
             )
         )
