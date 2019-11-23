@@ -1,0 +1,12 @@
+[submodule "plugins/reveal-code-focus"]
+	path = plugins/reveal-code-focus
+	url = https://github.com/bnjmnt4n/reveal-code-focus.git
+[submodule "plugins/reveal.js-plugins"]
+	path = plugins/reveal.js-plugins
+	url = https://github.com/rajgoel/reveal.js-plugins.git
+[submodule "reveal.js"]
+	path = reveal.js
+	url = https://github.com/hakimel/reveal.js.git
+[submodule "plugins/reveal-line-numbers"]
+	path = plugins/reveal-line-numbers
+	url = https://github.com/mikemiles86/reveal-line-numbers.git

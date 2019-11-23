@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+  node:
+    image: node
+    volumes:
+    - .:/code
+    - ./node:/root
+    working_dir: /code
+    entrypoint: ./run.sh
+    ports:
+    - '8000:8000'
