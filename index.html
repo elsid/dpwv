@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-    <title>Dynamic Polymorphism Without Virtual Methods</title>
+    <title>Dynamic Polymorphism Without Virtual Functions</title>
     <meta name="author" content="Roman Siromakha">
 
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,11 +23,11 @@
 
     <!-- Printing and PDF exports -->
     <script>
-      var link = document.createElement( 'link' );
+      var link = document.createElement('link');
       link.rel = 'stylesheet';
       link.type = 'text/css';
-      link.href = window.location.search.match( /print-pdf/gi ) ? 'reveal.js/css/print/pdf.css' : 'reveal.js/css/print/paper.css';
-      document.getElementsByTagName( 'head' )[0].appendChild( link );
+      link.href = window.location.search.match(/print-pdf/gi) ? 'reveal.js/css/print/pdf.css' : 'reveal.js/css/print/paper.css';
+      document.getElementsByTagName('head')[0].appendChild( link );
     </script>
   </head>
 
@@ -35,27 +35,31 @@
     <div class="reveal">
       <div class="slides">
         <section>
-            <h1>Dynamic Polymorphism Without Virtual Methods</h1>
+            <h1>Dynamic Polymorphism Without Virtual Functions</h1>
         </section>
 
         <section data-markdown>
           <script type="text/template">
-### The Problem
+### The problem
 
-Handle any of given HTTP-requests
+Handle given HTTP-requests
 ```http
 GET /conferences/cppnow2020/speakers/326 HTTP/1.1
 
-PUT /conferences/cppnow2020/rooms HTTP/1.1
+POST /conferences/cppnow2020/rooms HTTP/1.1
 
 DELETE /conferences/cppnow2020/talks/473 HTTP/1.1
+
+GET /conferences/cppnow2020/rooms/3/talks HTTP/1.1
+
+GET /conferences/cppnow2020/rooms/5/speakers HTTP/1.1
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
 ### The problem conditions
 
-Assume we have already parsed request
+Assume we have request representation:
 ```c++
 struct Request {
   std::string method;
@@ -71,1041 +75,1129 @@ request.uri = {"conferences", "cppnow2020", "speakers", "326"};
 
 ### The problem conditions
 
-And we can define state machine which handler to call with given input
+And we need to define a dispatch function to call the corresponding handler to a given input.
 
 </script></section><section data-markdown><script type="text/template">
 
 ### Handlers
 
 ```c++
-void get_speaker(ConferenceId conference_id, SpeakerId speaker, Response& response);
-void add_room(ConferenceId conference_id, Response& response);
-void remove_talk(ConferenceId conference_id, TalkId talk_id, Response& response);
+// GET /conferences/cppnow2020/speakers/326 HTTP/1.1
+// Returns a speaker if it exists or none
+std::optional<Speaker> get_speaker(ConferenceId conference_id, SpeakerId speaker);
+
+// POST /conferences/cppnow2020/rooms HTTP/1.1
+// Creates a new room and returns last state
+Room add_room(ConferenceId conference_id);
+
+// DELETE /conferences/cppnow2020/talks/473 HTTP/1.1
+// Removes talk and returns it's last state if found
+std::optional<Talk> remove_talk(ConferenceId conference_id, TalkId talk_id);
+
+// GET /conferences/cppnow2020/rooms/3/talks HTTP/1.1
+// Returns all talks happening in a given conference room
+std::vector<Talk> get_room_talks(ConferenceId conference_id, RoomId room_id);
+
+// GET /conferences/cppnow2020/rooms/5/speakers HTTP/1.1
+// Returns all speakers giving talks in a given conference room
+std::vector<Speaker> get_room_speakers(ConferenceId conference_id, RoomId room_id);
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Simple problem
+### A toy problem
 
 ```c++
-struct Fizz;
-struct Buzz;
+struct Potion {/* ... */};
+struct Spell {/* ... */};
 
-void foo(Fizz);
-void bar(Buzz);
+void drink(Potion);
+void cast(Spell);
 
-// If type is foo should construct Fizz from given value and call foo.
-// If type is bar should construct Buzz from given value and call bar.
+// If action is drink dispatch should construct Potion from given object and call drink.
+// If action is cast dispatch should construct Spell from given object and call cast.
 // Otherwise should throw an exception.
-void route(std::string_view type, std::string_view value);
+void dispatch(std::string_view action, std::string_view object);
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### If-else solution
+### If-then solution
 
 ```c++
-void route(std::string_view type, std::string_view value) {
-  if (type == "foo") {
-    foo(Fizz {value});
-  } else if (type == "bar") {
-    bar(Buzz {value});
-  } else {
-    using std::string_literals;
-    throw std::invalid_argument("Unknown type: "s + type);
+void dispatch(std::string_view action, std::string_view object) {
+  if (action == "drink") {
+    return drink(Potion {object});
   }
+  if (action == "cast") {
+    return cast(Spell {object});
+  }
+  throw std::runtime_error("Invalid action: " + std::string(action));
 }
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### What if there are more?
+#### What if there are more?
 ```c++
-void foo(Fizz);
-void bar(Buzz);
-void far(Fuzz);
-void boo(Bizz);
-void bor(Zzzz);
-void fao(Ffff);
-void bao(Bbbb);
-void bbb(Bfzz);
-void fff(Ffzz);
-void wtf(Ziff);
+void drink(Potion);
+void cast(Spell);
+void drink(Potion);
+void equip(Staff);
+void wear(Robe);
+void enchant(Staff);
+void read(Scroll);
 
-void route(std::string_view type, std::string_view value);
+void dispatch(std::string_view type, std::string_view value);
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Ok, no problem
+#### Just add if-condition for each case...
 
 ```c++
-void route(std::string_view type, std::string_view value) {
-  if (type == "foo") foo(Fizz {value});
-  else if (type == "bar") bar(Buzz {value});
-  else if (type == "far") far(Fuzz {value});
-  else if (type == "boo") boo(Bizz {value});
-  else if (type == "bor") boo(Bizz {value});
-  else if (type == "fao") fao(Ffff {value});
-  else if (type == "bao") bao(Bbbb {value});
-  else if (type == "bbb") bbb(Bfzz {value});
-  else if (type == "fff") fff(Ffzz {value});
-  else if (type == "wtf") wtf(Ziff {value});
-  else throw std::invalid_argument("Go home");
+void dispatch(std::string_view action, std::string_view object) {
+  if (action == "drink") return drink(Potion {object});
+  if (action == "cast") return cast(Spell {object});
+  if (action == "drink") return drink(Potion {object});
+  if (action == "equip") return equip(Staff {object});
+  if (action == "wear") return wear(Robe {object});
+  if (action == "enchant") return enchant(Staff {object});
+  if (action == "read") return read(Scroll {object});
+  throw std::invalid_argument("I can't play " + std::string(action) + " action");
 }
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Looks fine
+#### And more real case
+
+```c++
+void roll_dice(State& state);
+
+void cast(State& state, Wizard wizard, Spell spell);
+
+void learn(State& state, Wizard wizard, Spell spell);
+
+void add_spell(State& state, Spell spell, Mana cost);
+
+void add_wizard(State& state, Wizard wizard, Mana mana);
+
+void channel(State& state, Wizard wizard, Mana mana);
+
+void wizard_mana(State& state, Wizard wizard);
+
+void spell_cost(State& state, Spell spell);
+```
 
 </script></section><section data-markdown><script type="text/template">
 
-### No, wait...
+#### With if-then solution
 
-Was there any typo?
-
-</script></section><section><pre><code data-trim>
-void route(std::string_view type, std::string_view value) {
-  if (type == "foo") foo(Fizz {value});
-  else if (type == "bar") bar(Buzz {value});
-  else if (type == "far") far(Fuzz {value});
-  else if (type == "boo") boo(Bizz {value});
-  else if (type == "bor") <mark>boo(Bizz</mark> {value});
-  else if (type == "fao") fao(Ffff {value});
-  else if (type == "bao") bao(Bbbb {value});
-  else if (type == "bbb") bbb(Bfzz {value});
-  else if (type == "fff") fff(Ffzz {value});
-  else if (type == "wtf") wtf(Ziff {value});
-  else throw std::invalid_argument("Go home");
+```c++
+void dispatch(State& state, std::span<std::string> in) {
+  if (in.empty()) throw std::runtime_error("Not enough input");
+  if (in.size() == 1 && in[0] == "roll_dice") return roll_dice(state);
+  if (in.size() == 3) {
+    if (in[0] == "spells" && in[1] == "cost") return spell_cost(state, Spell {in[2]});
+    if (in[0] == "wizards" && in[1] == "mana") return wizard_mana(state, Wizard {in[2]});
+  }
+  if (in.size() == 4) {
+    if (in[0] == "spells" && in[1] == "add")
+      return add_spell(state, Spell {in[2]}, Mana {in[3]});
+    if (in[0] == "wizards") {
+      if (in[1] == "add") return add_wizard(state, Wizard {in[2]}, Mana {in[3]});
+      if (in[1] == "learn") return learn(state, Wizard {in[2]}, Spell {in[3]});
+      if (in[1] == "cast") return cast(state, Wizard {in[2]}, Spell {in[3]});
+      if (in[1] == "channel") return channel(state, Wizard {in[2]}, Mana {in[3]});
+    }
+  }
+  throw std::runtime_error("Invalid input");
 }
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+### If-then solution summary
+
+* <span class="pros">Pros</span>:
+  * Initially obvious how to write
+  * Zero overhead
+
+* <span class="cons">Cons</span>:
+  * Structure change requires logic change
+  * Boilerplate code
 
 </script></section><section data-markdown><script type="text/template">
 
 ### How about virtual?
 
 ```c++
-struct Base {
-  virtual void call(std::string_view value) = 0;
+struct Action {
+  virtual ~Action() = default;
+  virtual void operator ()(std::string_view object) const = 0;
 };
-using Map = std::map<Type, std::unique_ptr<Base>>;
-void route(Map alternatives, std::string_view type, std::string_view value) {
-  alternatives.at(make_type(type))->call(value);
-}
-struct Foo : Base {
-  void call(std::string_view value) override {
-    const Fizz typed_value {value};
-    // ...
+struct Cast : Action {
+  void operator ()(std::string_view spell) const final { cast(Spell {spell}); }
+};
+struct Selector {
+  std::unordered_map<std::string_view, const Action*> actions;
+  void operator ()(std::span<std::string> input) const {
+    if (input.size() < 2) throw std::runtime_error("Not enough input");
+    const auto action = actions.find(input[0]);
+    if (action != actions.cend()) return (*action->second)(input[1]);
+    throw std::runtime_error("Invalid action: " + input[0]);
+  }
+};
+const Drink drink; const Cast cast;
+const Selector dispatch {{{"drink", &drink}, {"cast", &cast}}};
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+#### How about a different number of arguments?
+
+```c++
+void cast(Wizard wizard, Spell spell);
+
+void learn(Wizard wizard, Spell spell);
+
+void add(Spell spell);
+
+void add(Wizard wizard);
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Declare interface with std::span argument
+
+```c++
+struct Action {
+  virtual ~Action() = default;
+  virtual void operator ()(std::span<std::string> args) const = 0;
+};
+
+struct Cast : Action {
+  void operator ()(std::span<std::string> args) const final {
+    if (args.size() < 2) {
+      throw std::runtime_error("Not enough args");
+    }
+    cast(Wizard {args[0]}, Spell {args[1]});
   }
 };
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### How about different number of arguments?
+#### Selector class passes subspan to the selected action
 
 ```c++
-void foo(Fizz);
-void bar(Fizz, Buzz);
-```
+struct Selector : Action {
+  std::unordered_map<std::string_view, const Action*> actions;
 
-</script></section><section data-markdown><script type="text/template">
-
-### Interface class
-
-```c++
-struct Interface {
-  using It = std::vector<std::string_view>::const_iterator;
-
-  virtual int route0(It it, It end) const = 0;
-  virtual int route1(It it, It end, std::string_view arg0) const = 0;
-  virtual int route2(It it, It end, std::string_view arg0,
-                     std::string_view arg1) const = 0;
-  // ...
+  void operator ()(std::span<std::string> input) const final {
+    if (input.empty()) {
+      throw std::runtime_error("Not enough input");
+    }
+    const auto action = actions.find(input[0]);
+    if (action != actions.cend()) {
+      return (*action->second)(std::span(input.data() + 1, input.size() - 1));
+    }
+    throw std::runtime_error("Invalid action: " + input[0]);
+  }
 };
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Router class
+#### Also Selector class supports composition
 
 ```c++
-struct Router : Interface {
-  std::map<std::string, std::unique_ptr<Interface>> alternatives;
-  void route2(It it, It end, std::string_view arg0,
-              std::string_view arg1) const final {
-    if (it == end) {
-      throw std::invalid_argument("path is not found");
+const RollDice roll_dice;
+const AddWizard add_wizard;
+const Cast cast; const Learn learn;
+const Channel channel; const WizardMana wizard_mana;
+const Selector wizards({
+    {"add", &add_wizard},
+    {"cast", &cast}, {"learn", &learn},
+    {"channel", &channel}, {"mana", &wizard_mana},
+});
+const AddSpell add_spell;
+const SpellCost spell_cost;
+const Selector spells({{"add", &add_spell}, {"cost", &spell_cost}});
+const Selector dispatch({
+    {"roll_dice", &roll_dice},
+    {"spells", &spells},
+    {"wizards", &wizards},
+});
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+### Virtual methods based solution summary
+
+* <span class="pros">Pros</span>:
+  * Dispatch logic is separated from the structure
+  * Actions are composable
+* <span class="cons">Cons</span>:
+  * Boilerplate action wrappers
+  * Check for a number of arguments in each action
+  * Single return type
+
+</script></section><section data-markdown><script type="text/template">
+
+### Why do we still need virtual?
+
+* Store objects of different types in a single container
+* Have an interface to call the Action
+
+</script></section><section data-markdown><script type="text/template">
+
+### What can we use instead?
+
+* Store objects of different types in a single container
+  * Variadic templates allow to break some restrictions
+* Have an interface to call the Action
+  * `std::tuple` may contain objects of different types not having common base class
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Selector with tuple of actions
+
+```c++
+template <class Tag, class ... Actions>
+struct Selector {
+  static constexpr typename Tag::value_type name = Tag::value;
+  const std::tuple<Actions ...> actions;
+  template <class ... Ts>
+  constexpr explicit Selector(Tag, Ts&& ... actions)
+      : actions(std::forward<Ts>(actions) ...) {}
+  template <class ... Args>
+  void operator ()(std::ranges::input_range auto input, Args&& ... args) const {
+    if (std::empty(input)) {
+      throw std::runtime_error("Not enough input");
     }
-    const auto next = alternatives.find(*it);
-    if (next != alternatives.end()) {
-      return next->second->route2(++it, end, arg0, arg1);
+    return find_action(*std::begin(input), [&] (const auto& action) {
+      return invoke(action, consume(input), std::forward<Args>(args) ...);
+    });
+  }
+};
+```
+
+<span class="fragment current-only" data-code-focus="4">`std::tuple` holds actions to choose</span>
+<span class="fragment current-only" data-code-focus="3">`name` is required to make Selector selectable as action</span>
+<span class="fragment current-only" data-code-focus="8-9">Call operator accepts input and extracted arguments</span>
+<span class="fragment current-only" data-code-focus="9">`input` should statisfy `std::ranges::input_range` concept</span>
+<span class="fragment current-only" data-code-focus="10-12">Still using exceptions for error handling</span>
+<span class="fragment current-only" data-code-focus="13-16">Trying to find an action by name and pass it to a callback</span>
+<span class="fragment current-only" data-code-focus="14">Name is consumed from the input and selected action is invoked</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Find action by name
+
+```c++
+template <class Tag, class ... Actions>
+struct Selector {
+  template <std::size_t i = 0, class V, class F>
+  void find_action(const V& action_name, F&& f) const {
+    if constexpr (i >= std::tuple_size_v<decltype(actions)>) {
+      throw std::runtime_error(std::format("Invalid action: {}", action_name));
     } else {
-      const auto& arg2 = *it;
-      return route3(++it, end, arg0, arg1, arg2);
+      if (std::get<i>(actions).name == action_name) {
+        return f(std::get<i>(actions));
+      }
+      find_action<i + 1>(action_name, std::forward<F>(f));
     }
   }
-  // ...
 };
+```
+
+<span class="fragment current-only" data-code-focus="3">`i` tracks the tuple element to do a linear search</span>
+<span class="fragment current-only" data-code-focus="5-6">Stop when all actions are checked</span>
+<span class="fragment current-only" data-code-focus="5-6">Even condition is compile time the error is runtime because action name is a runtime value</span>
+<span class="fragment current-only" data-code-focus="8-10">When action is found call a given function `f`</span>
+<span class="fragment current-only" data-code-focus="11">Otherwise keep looking</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Invoke converts input into arguments and calls a given action
+
+```c++
+template <class Action, std::ranges::input_range Range, class ... Args>
+auto invoke(const Action& action, Range input, Args&& ... args) {
+  if constexpr (std::is_invocable_v<Action, Range, Args&& ...>) {
+    return action(input, std::forward<Args>(args) ...);
+  } else if constexpr (std::is_invocable_v<Action, Args&& ...>) {
+    if (!std::empty(input)) {
+      throw std::runtime_error("Too many arguments");
+    }
+    return action(std::forward<Args>(args) ...);
+  } else {
+    if (std::empty(input)) {
+      throw std::runtime_error("Not enough input");
+    }
+    return invoke(action, consume(input),
+                  std::forward<Args>(args) ..., *std::begin(input));
+  }
+}
+```
+
+<span class="fragment current-only" data-code-focus="3-4">Is it an action that can consume input?</span>
+<span class="fragment current-only" data-code-focus="5-9">Is it an endpoint action and we have enough arguments?</span>
+<span class="fragment current-only" data-code-focus="10-16">Otherwise we need to consume argument</span>
+<span class="fragment current-only" data-code-focus="14-15">And try to invoke it with more arguments</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### consume helper
+
+```c++
+auto consume(std::ranges::input_range auto input) {
+  return std::ranges::subrange(
+    std::next(std::begin(input)),
+    std::end(input)
+  );
+}
+```
+
+<span class="fragment current-only" data-code-focus="2-5">Returns a subrange</span>
+<span class="fragment current-only" data-code-focus="3">Without the first element</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### What if there is a mistake in the Action definition?
+
+```c++
+struct CorrectAction {
+  void operator ()(std::string_view arg) const;
+};
+struct WrongAction {
+  void operator ()(std::string_view arg);
+};
+template <class Action, std::ranges::input_range Range, class ... Args>
+auto invoke(const Action& action, Range input, Args&& ... args) {
+  if constexpr (std::is_invocable_v<decltype(action), Args&& ...>) {
+    return action(std::forward<Args>(args) ...);
+  } else {
+    if (std::empty(input)) throw std::runtime_error("Not enough input");
+    return invoke(action, consume(input),
+                  std::forward<Args>(args) ..., *std::begin(input));
+  }
+}
+```
+
+<span class="fragment current-only" data-code-focus="5">`const` modifier is missing</span>
+<span class="fragment current-only" data-code-focus="9">This is false</span>
+<span class="fragment current-only" data-code-focus="13-14">A compiler keeps instantiating invoke function for more and more arguments</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Usually infinite instantiation ends with
+
+```
+fatal error: recursive template instantiation exceeded maximum depth of 1024
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Endpoint class
+#### How to fix it?
+
+Because we don't want to wait for ~30 seconds and possible OOM for compilation to complete in a case of error.
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Invoke should count arguments
+
+```diff
+ template <class Action, std::ranges::input_range Range, class ... Args>
+ void invoke(const Action& action, Range input, Args&& ... args) {
+-  if constexpr (std::is_invocable_v<decltype(action), Args&& ...>) {
++  if constexpr (sizeof ... (Args) >= arguments_number_v<Action>) {
++    if (!std::empty(input)) {
++      throw std::runtime_error("Too many arguments");
++    }
+     return action(std::forward<Args>(args) ...);
+   } else {
+     if (std::empty(input)) throw std::runtime_error("Not enough input");
+     return invoke(action, consume(input),
+                   std::forward<Args>(args) ..., *std::begin(input));
+   }
+ }
+```
+
+<span class="fragment current-only" data-code-focus="4-7">If a number of items in Args variadic is enough then call action</span>
+<span class="fragment current-only" data-code-focus="4">`>=` is required to avoid infinite instantiation when Args has more items than action requires</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### And count for each type of function via metafunction
 
 ```c++
-struct Foo : Interface {
-  void route1(It, It, std::string_view arg0) const override {
-    return foo(Fizz {arg0});
-  }
+template <class F>
+struct ArgumentsNumber {
+  static constexpr std::size_t value =
+    ArgumentsNumber<decltype(&F::operator())>::value - 1;
 };
-struct Bar : Interface {
-  void route0(It, It) const {
-    throw std::logic_error("invalid call");
+template <class R, class ... Args>
+struct ArgumentsNumber<R (*)(Args ...)>
+    : std::integral_constant<std::size_t, sizeof ... (Args)> {};
+template <class T, class R, class ... Args>
+struct ArgumentsNumber<R (T::*)(Args ...)>
+    : std::integral_constant<std::size_t, sizeof ... (Args) + 1> {};
+template <class T, class R, class ... Args>
+struct ArgumentsNumber<R (T::*)(Args ...) const>
+    : std::integral_constant<std::size_t, sizeof ... (Args) + 1> {};
+
+template <class F>
+constexpr std::size_t arguments_number_v = ArgumentsNumber<F>::value;
+```
+
+<span class="fragment current-only" data-code-focus="1-5">When F has oveloaded call operator</span>
+<span class="fragment current-only" data-code-focus="6-8">When F is a function pointer</span>
+<span class="fragment current-only" data-code-focus="9-14">When F is a member function pointer</span>
+<span class="fragment current-only" data-code-focus="16-17">constexpr variable is for convenience</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Invoke with composition and arguments counting support
+
+```c++
+template <class Action, std::ranges::input_range Range, class ... Args>
+void invoke(const Action& action, Range input, Args&& ... args) {
+  if constexpr (std::is_invocable_v<Action, Range, Args&& ...>) {
+    return action(input, std::forward<Args>(args) ...);
+  } else if constexpr (sizeof ... (Args) >= arguments_number_v<Action>) {
+    if (!std::empty(input)) {
+      throw std::runtime_error("Too many arguments");
+    }
+    return action(std::forward<Args>(args) ...);
+  } else {
+    if (std::empty(input)) {
+      throw std::runtime_error("Not enough input");
+    }
+    return invoke(action, consume(input),
+                  std::forward<Args>(args) ..., *std::begin(input));
   }
-  void route1(It, It, std::string_view) const {
-    throw std::logic_error("invalid call");
-  }
-  void route2(It, It, std::string_view arg0,
-              std::string_view arg1) const override {
-    return bar(Fizz {arg0}, Buzz {arg1});
-  }
-};
+}
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Or we can use tuples as for arguments
+#### There is still a boilerplate action wrapper
 
 ```c++
-struct Base {
-  using It = std::vector<std::string>::const_iterator;
+struct Cast {
+  static constexpr std::string_view name {"cast"};
 
-  virtual int route0(It it, It end,
-                     const std::tuple<>& arguments) const = 0;
-  virtual int route1(It it, It end,
-                     const std::tuple<std::string_view>& arguments) const = 0;
-  virtual int route2(It it, It end,
-                     const std::tuple<std::string_view,
-                                      std::string_view>& arguments) = 0;
-  // ...
+  void operator ()(Wizard wizard, Spell spell) const {
+    cast(wizard, spell);
+  }
 };
+```
+
+<span class="fragment current-only" data-code-focus="2">name is required to identify the action</span>
+<span class="fragment current-only" data-code-focus="4">With appropriate constructors arguments type conversion is implicit</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Template Action type allows to avoid boilerplate wrappers
+
+```c++
+template <class Tag, class F>
+struct Action {
+  static constexpr typename Tag::value_type name = Tag::value;
+  F f;
+  template <class T>
+  constexpr explicit Action(Tag, T&& f) : f(std::forward<T>(f)) {}
+  template <class ... Args>
+  auto operator ()(Args&& ... args) const -> std::invoke_result_t<F, Args&& ...> {
+    return std::invoke(f, std::forward<Args>(args) ...);
+  }
+};
+
+template <class Tag, class F>
+Action(Tag, F&& f) -> Action<Tag, std::decay_t<F>>;
+```
+
+<span class="fragment current-only" data-code-focus="3">This is the only place now where a name has to be stored</span>
+<span class="fragment current-only" data-code-focus="4">Action holds any type of function</span>
+<span class="fragment current-only" data-code-focus="8">That should be called only with correct arguments</span>
+<span class="fragment current-only" data-code-focus="9">And `std::invoke` helps to handle different types of call (like member functions)</span>
+<span class="fragment current-only" data-code-focus="13-14">Template deduction guide keeps initialization short</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Then Selector doesn't need a tag
+
+```diff
+-template <class Tag, class ... Actions>
++template <class ... Actions>
+struct Selector {
+-  static constexpr typename Tag::value_type name = Tag::value;
+   const std::tuple<Actions ...> actions;
+   template <class ... Ts>
+-  constexpr explicit Selector(Tag, Ts&& ... actions)
++  constexpr explicit Selector(Ts&& ... actions)
+       : actions(std::forward<Ts>(actions) ...) {}
+ };
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Or even more general approach
+#### Initialization is similar to a virtual-based approach
 
 ```c++
-struct Base {
-  using Arguments = std::variant<
-    std::tuple<>,
-    std::tuple<StringCref>,
-    std::tuple<StringCref, StringCref>,
-    // ...
-  >;
-  virtual void route(It it, It end, const Arguments& arguments) = 0;
-};
+constexpr struct SpellsTag {
+  static constexpr std::string_view name {"spells"};
+} spells_tag;
+
+constexpr Selector dispatch(
+  Action(roll_dice_tag, &roll_dice),
+  Action(spells_tag, Selector(
+    Action(add_spell_tag, &add_spell),
+    Action(spell_cost_tag, [] (Spell spell) { spell_cost(spell); })
+  )),
+  Action(wizards_tag, Selector(
+    Action(add_wizard_tag, &add_wizard),
+    Cast {},
+    Action(learn_tag, &learn),
+    Action(channel_tag, &channel),
+    Action(wizard_mana_tag, &wizard_mana)
+  ))
+);
 ```
+
+<span class="fragment current-only" data-code-focus="1-3">Tags are defined as constexpr variables</span>
+<span class="fragment current-only" data-code-focus="5">Selector object can be a constexpr variable</span>
+<span class="fragment current-only" data-code-focus="6">Function pointers are supported</span>
+<span class="fragment current-only" data-code-focus="9">Lambdas but with specific type arguments</span>
+<span class="fragment current-only" data-code-focus="13">Or custom types with overloaded call operator</span>
 
 </script></section><section data-markdown><script type="text/template">
 
-### Then endpoint class will be visitor
+#### What about a return type?
+
+</script></section><section data-markdown><script type="text/template">
+
+#### It's still a single return type but implicitly defined
 
 ```c++
-template <class Visitor>
-struct Endpoint : Interface {
-  void route(It, It, std::string_view, const Arguments& arguments) const override {
+std::error_code cast(Wizard wizard, Spell spell);
+template <class ... Actions>
+struct Selector {
+  using return_type = distinct_t<return_type_t<Actions> ...>;
+  template <std::size_t i = 0, class V, class F>
+  return_type find_action(const V& action_name, F&& f) const {
+    if constexpr (i >= std::tuple_size_v<decltype(actions)>) {
+      throw std::runtime_error("Invalid action: " + std::string(action_name));
+    } else {
+      if (std::get<i>(actions).name == action_name) {
+          return make_result(f(std::get<i>(actions)));
+      }
+      return find_action<i + 1>(action_name, std::forward<F>(f));
+    }
+  }
+};
+```
+
+<span class="fragment current-only" data-code-focus="4">The Selector return type is a conjunction of all Action return types</span>
+<span class="fragment current-only" data-code-focus="11">And it should be explicitly converted into a "super" conjunction</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### How to get a conjuction of distinct types?
+
+```c++
+template <class ... Ts> struct Visited {};
+template <class ... Ts>
+struct Distinct : Distinct<Visited<>, Ts ...> {};
+
+template <class T, class ... Vs, class ... Ts>
+struct Distinct<Visited<Vs ...>, T, Ts ...>
+    : std::conditional_t<is_visited_v<T, Visited<Vs ...>>,
+        Distinct<Visited<Vs ...>, Ts ...>,
+        Distinct<Visited<T, Vs ...>, Ts ...>
+    > {};
+
+template <class ... Ts>
+struct Distinct<Visited<Ts ...>> { using type = std::variant<Ts ...>; };
+template <class T>
+struct Distinct<Visited<T>> { using type = T; };
+
+template <class ... Vs, class ... Qs, class ... Ts>
+struct Distinct<Visited<Vs ...>, std::variant<Qs ...>, Ts ...>
+    : Distinct<Visited<Vs ...>, Qs ..., Ts ...> {};
+```
+
+<span class="fragment current-only" data-code-focus="1-3">Visited should contain only unique types</span>
+<span class="fragment current-only" data-code-focus="5-10">Check them one by one and put only new to Visited</span>
+<span class="fragment current-only" data-code-focus="12-13">Define `std::variant` when all types are visited</span>
+<span class="fragment current-only" data-code-focus="14-15">But strip variant when there is only one type</span>
+<span class="fragment current-only" data-code-focus="17-19">Recursive `std::variant` is not allowed</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### IsVisited is a linear search metafunction
+
+```c++
+template <class ...>
+struct IsVisited : std::false_type {};
+
+template <class T, class H, class ... Ts>
+struct IsVisited<T, Visited<H, Ts ...>> : IsVisited<T, Visited<Ts ...>> {};
+
+template <class T, class ... Ts>
+struct IsVisited<T, Visited<T, Ts ...>> : std::true_type {};
+
+template <class T>
+struct IsVisited<T, Visited<>> : std::false_type {};
+
+template <class ... Ts>
+constexpr bool is_visited_v = IsVisited<Ts ...>::value;
+```
+
+<span class="fragment current-only" data-code-focus="1-2">Types by default are not visited</span>
+<span class="fragment current-only" data-code-focus="4-5">So we check Visited template arguments one by one</span>
+<span class="fragment current-only" data-code-focus="7-8">Until we found it</span>
+<span class="fragment current-only" data-code-focus="10-11">Or there is nothing left</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### std::variant is constructible from
+
+```c++
+template <class ... Actions>
+struct Selector {
+  template <class ... Ts>
+  static auto make_result(std::variant<Ts ...>&& value) {
     return std::visit(
-      [] (const auto& arguments) { return hana::unpack(arguments, Visitor {}); },
-      arguments
+      [] (auto&& v) { return return_type(std::move(v)); },
+      std::move(value)
     );
   }
-};
-struct BarVisitor {
-  template <class ... Ts>
-  void operator ()(Ts&& ...) const {
-    throw std::logic_error("invalid call");
-  }
-  void operator ()(Base::StringCref arg0, Base::StringCref arg1) const {
-    return bar(Fizz {arg0.get()}, Buzz {arg1.get()});
+
+  template <class T>
+  static auto make_result(T&& value) {
+    return return_type(std::forward<T>(value));
   }
 };
-using Bar = Endpoint<BarVisitor>;
 ```
+
+<span class="fragment current-only" data-code-focus="3-9">`std::variant` of subset of types</span>
+<span class="fragment current-only" data-code-focus="5-8">`std::variant` construction from a different type requires `std::visit`</span>
+<span class="fragment current-only" data-code-focus="11-14">Or one of the sub types</span>
 
 </script></section><section data-markdown><script type="text/template">
 
-### Why do we need virtual at first place?
+#### Selector usage example: state and user defined action
 
-If we can't do this...
 ```c++
-class Inteface {
-  template <class ... Ts>
-  virtual void route(It it, It end, Ts&& ...) = 0;
+struct State {
+  std::minstd_rand0 random;
+  std::map<std::string, int, std::less<>> spells;
+  std::map<std::string, int, std::less<>> wizards;
+  std::map<std::string_view, std::set<std::string_view>> known_spells;
+};
+
+struct Channel {
+  std::error_code operator()(State& state, Wizard wizard, Mana mana) const {
+    const auto it = state.wizards.find(wizard.name);
+    if (it == state.wizards.end()) {
+        return std::make_error_code(std::errc::invalid_argument);
+    }
+    it->second += mana.value;
+    return std::error_code();
+  }
 };
 ```
-...but can do with std::variant and std::visit.
 
 </script></section><section data-markdown><script type="text/template">
 
-### Let's do it different way
+#### Selector usage example: read and apply input
 
-Back to the original problem...
+```c++
+State state;
+for (std::string line; std::getline(std::cin, line);) {
+  std::vector<std::string> input;
+  std::istringstream stream(std::move(line));
+  for (std::string arg; stream >> arg;) {
+      input.emplace_back(std::move(arg));
+  }
+  try {
+      std::visit(PrintResult {}, dispatch(input, state));
+  } catch (const std::exception& e) {
+      std::cerr << "command \"" << line << "\" is failed: " << e.what();
+  }
+}
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Selector usage example: input sample
+
+```
+roll_dice
+wizards add Medivh 100
+spells add frostbolt 60
+wizards learn Medivh frostbolt
+wizards cast Medivh frostbolt
+wizards mana Medivh
+spells cost frostbolt
+wizards channel Medivh 20
+wizards cast Medivh frostbolt
+```
+
+<span class="fragment current-only" data-code-focus="4">Something like<br>`wizards Medivh learn frostbolt`<br>can be more readable</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Argument action type is a typed placeholder
+
+```c++
+template <class T, class ... Actions>
+struct Argument {
+  Selector<Actions ...> selector;
+
+  template <class ... F>
+  constexpr explicit Argument(F&& ... f) : selector(std::forward<F>(f) ...) {}
+
+  template <class ... Args>
+  auto operator ()(std::ranges::input_range auto input, Args&& ... args) const {
+    if (std::empty(input)) throw std::runtime_error("Not enough input");
+    return selector(consume(input),
+                    std::forward<Args>(args) ..., T {*std::begin(input)});
+  }
+};
+
+template <class T, class ... Actions>
+constexpr auto argument(Actions&& ... actions) {
+  return Argument<T, std::decay_t<Actions> ...>(std::forward<Actions>(actions) ...);
+}
+```
+
+<span class="fragment current-only" data-code-focus="3">It aggregates Selector to provide similar behavior</span>
+<span class="fragment current-only" data-code-focus="11-12">But also consumes and converts single input value into a given type</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Template specializations for Argument
+
+```c++
+template <class T, class ... Actions>
+struct ArgumentsNumber<Argument<T, Actions ...>>
+    : ArgumentsNumber<Selector<Actions ...>> {};
+
+template <class T, class ... Actions>
+struct ReturnType<Argument<T, Actions ...>>
+    : ReturnType<Selector<Actions ...>> {};
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Selector should save input value
+
+```diff
+ template <std::ranges::input_range Range, class ... Args>
+ return_type operator ()(Range input, Args&& ... args) const {
+   if (std::empty(input)) throw std::runtime_error("Not enough input");
+-  return find_action(*std::begin(input), [&] (const auto& action) {
+-    return invoke(action, consume(input), std::forward<Args>(args) ...);
++  return find_action(input, [&] (auto input, const auto& action) {
++    return invoke(action, input, std::forward<Args>(args) ...);
+   });
+ }
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+#### find_action takes it out when needed
+
+```c++
+template <std::size_t i = 0, class F>
+return_type find_action(std::ranges::input_range auto input, F&& f) const {
+  if constexpr (i >= std::tuple_size_v<decltype(actions)>) {
+    throw std::runtime_error(std::format("Invalid action: {}", *std::begin(input)));
+  } else if constexpr (has_name_v<std::tuple_element_t<i, decltype(actions)>>) {
+    if (std::get<i>(actions).name == *std::begin(input)) {
+      return make_result(f(consume(input), std::get<i>(actions)));
+    }
+    return find_action<i + 1>(input, std::forward<F>(f));
+  } else {
+    return make_result(f(input, std::get<i>(actions)));
+  }
+}
+```
+
+<span class="fragment current-only" data-code-focus="5-9">Regular Actions have a name</span>
+<span class="fragment current-only" data-code-focus="10-12">But Argument action does not</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Does action have a name?
+
+```c++
+template <class, class = std::void_t<>>
+struct HasName : std::false_type {};
+
+template <class T>
+struct HasName<T, std::void_t<decltype(T::name)>> : std::true_type {};
+
+template <class T>
+constexpr bool has_name_v = HasName<T>::value;
+```
+
+<span class="fragment current-only" data-code-focus="1-2">It does not by default</span>
+<span class="fragment current-only" data-code-focus="4-5">Unless there is a name class member</span>
+
+</script></section><section data-markdown><script type="text/template">
+
+#### Selector initialization may contain typed arguments
+
+```c++
+constexpr Selector dispatch(
+  Action(roll_dice_tag, &roll_dice),
+  Action(spells_tag, Selector(
+    Action(add_spell_tag, &add_spell),
+    argument<Spell>(
+      Action(spell_cost_tag, &spell_cost)
+    )
+  )),
+  Action(wizards_tag, Selector(
+    Action(add_wizard_tag, &add_wizard),
+    argument<Wizard>(
+      Action(cast_tag, &cast),
+      Action(learn_tag, &learn),
+      Action(channel_tag, &channel),
+      Action(wizard_mana_tag, &wizard_mana)
+    )
+  ))
+);
+```
+
+<span class="fragment current-only" data-code-focus="11-16">This defines input syntax to be: `wizards <name> <action>`</span>
 
 </script></section><section data-markdown><script type="text/template">
 
 ### Back to the original problem
 
 ```c++
-void get_speaker(ConferenceId conference_id, SpeakerId speaker, Stream& stream);
-void add_room(ConferenceId conference_id, Stream& stream);
-void remove_talk(ConferenceId conference_id, TalkId talk_id, Stream& stream);
+class Community {
+public:
+  // GET /conferences/cppnow2020/speakers/326 HTTP/1.1
+  std::optional<Speaker> get_speaker(ConferenceId conference_id, SpeakerId speaker);
 
-constexpr auto api =
-  "conferences"_l / conference_id / (
-    "speakers"_l / speaker_id / "GET"_m(get_speaker)
-    | "rooms"_l / "PUT"_m(add_room)
-    | "talks"_l / talk_id / "DELETE"_m(remove_talk)
-  );
+  // POST /conferences/cppnow2020/rooms HTTP/1.1
+  Room add_room(ConferenceId conference_id);
 
-template <class Api>
-void route(const Api& api, const std::vector<std::string>& path,
-           std::string_view method);
-```
+  // DELETE /conferences/cppnow2020/talks/473 HTTP/1.1
+  std::optional<Talk> remove_talk(ConferenceId conference_id, TalkId talk_id);
 
-<span class="fragment current-only" data-code-focus="5-10">Define API by DSL using overloaded operators</span>
-<span class="fragment current-only" data-code-focus="12-14">Call API method using given input</span>
+  // GET /conferences/cppnow2020/rooms/3/talks HTTP/1.1
+  std::vector<Talk> get_room_talks(ConferenceId conference_id, TalkId talk_id);
 
-</script></section><section data-markdown><script type="text/template">
-
-### Location
-
-```c++
-template <class CharT, CharT ... c>
-constexpr auto operator "" _l() {
-  return location<hana::string<c ...>>;
-}
-
-template <class CharT, CharT ... c>
-constexpr auto operator "" _location() { /*...*/ }
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Location
-
-```c++
-struct LocationTag {};
-
-template <class T>
-struct Location {
-  using address_type = T;
-  using hana_talk = LocationTag;
-};
-
-template <class T>
-constexpr auto location = Location<std::decay_t<T>> {};
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Method
-
-```c++
-struct MethodTag {};
-
-template <class T>
-struct Method {
-  using name_type = T;
-
-  template <class T>
-  constexpr auto operator ()(T&& v) const {
-    return tree(hana::make_tuple(hana::make_pair(*this, handler(std::forward<T>(v)))));
-  }
+  // GET /conferences/cppnow2020/rooms/5/speakers HTTP/1.1
+  std::vector<Speaker> get_room_speakers(ConferenceId conference_id, RoomId room_id);
 };
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Handler
+#### Selector
 
 ```c++
-struct HandlerTag {};
-
-template <class T>
-struct Handler {
-  using hana_talk = HandlerTag;
-  T impl;
-};
-
-template <class T>
-constexpr auto handler(T&& value) {
-  return Handler<std::decay_t<T>> {std::forward<T>(value)};
-};
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Tree
-
-```c++
-struct TreeTag {};
-
-template <class T>
-struct Tree {
-  using hana_talk = TreeTag;
-  T value;
-};
-
-template <class T>
-constexpr auto tree(T&& value) {
-  return Tree<std::decay_t<T>> {std::forward<T>(value)};
-}
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Parameter
-
-```c++
-struct ParameterTag {};
-
-template <class T>
-struct Parameter {
-  using value_type = T;
-  using hana_talk = ParameterTag;
-};
-
-template <class T>
-constexpr auto parameter = Parameter<std::decay_t<T>> {};
-
-constexpr auto conference_id = parameter<ConferenceId>;
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Sequence operator
-
-```c++
-template <class Lhs, class Rhs>
-constexpr auto operator /(const Tree<Location<Lhs>>& lhs, const Location<Rhs>& rhs) {
-  return lhs.value / rhs;
-}
-
-template <class Lhs, class Rhs>
-constexpr auto operator /(const Location<Lhs>& lhs, const Location<Rhs>& rhs) {
-  return tree(hana::make_tuple(hana::make_pair(lhs, rhs)));
-}
-
-template <class Lhs1, class Lhs2, class Rhs>
-constexpr auto operator /(const hana::pair<Lhs1, Lhs2>& lhs, const Location<Rhs>& rhs) {
-  return tree(hana::make_tuple(hana::make_pair(hana::first(lhs),
-                              (tree(hana::second(lhs)) / rhs).value)));
-}
-```
-
-<span class="fragment current-only" data-code-focus="1-4">Append location</span>
-<span class="fragment current-only" data-code-focus="6-9">Concat locations</span>
-<span class="fragment current-only" data-code-focus="11-17">Rotate tree</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-### Alternatives operator
-
-```c++
-template <class ... Lhs, class ... Rhs>
-constexpr auto operator |(const Tree<hana::tuple<Lhs ...>>& lhs,
-                          const Tree<hana::tuple<Rhs ...>>& rhs) {
-  return tree(hana::concat(lhs.value, rhs.value));
-}
-```
-</script></section><section data-markdown><script type="text/template">
-
-### API object type
-
-```c++
-using Conferences = decltype("conferences"_s);
-using Contacts = decltype("speakers"_s);
-using Tags = decltype("speakers"_s);
-using API = Tree<hana::tuple<
-  hana::pair<Location<decltype("conferences"_s)>, hana::tuple<
-    hana::pair<Location<decltype("speakers"_s)>, hana::tuple<
-      hana::pair<Method<decltype("speakers"_s)>, Handler<decltype(get_all_speakers)>>
-      // ...
-    >>,
-    hana::pair<Location<decltype("talks"_s)>, hana::tuple<
-      // ...
-    >>
-  >>
->>;
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### How to call handler?
-
-</script></section><section data-markdown><script type="text/template">
-
-### We can find element in tuple!
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-hana::find_if(nodes, [] (const auto& v) { ... });
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Is there something more efficient?
-
-</script></section><section data-markdown><script type="text/template">
-
-### Binary search!
-
-</script></section><section data-markdown><script type="text/template">
-
-### Binary search for tuple
-
-```c++
-template <class Result, class ... T, class Value, class Less, class Equal, class F>
-constexpr std::optional<Result> binary_search(const hana::tuple<T ...>& range,
-    const Value& value, Less&& less, Equal&& equal, F&& function) {
-  return detail::binary_search_impl<std::size_t(0), sizeof ... (T), Result>(
-    range,
-    value,
-    std::forward<Less>(less),
-    std::forward<Equal>(equal),
-    std::forward<Function>(function)
-  );
-}
-```
-<span class="fragment current-only" data-code-focus="4">Set low and high at the beginning</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-### Binary search for tuple
-
-```c++
-template <std::size_t low, std::size_t high, class Result, class Range, class Value,
-          class Less, class Equal, class F>
-constexpr std::enable_if_t<(high - low >= 2), std::optional<Result>> binary_search_impl(
-    const Range& range, const Value& value, Less&& less, Equal&& equal, F&& function) {
-  if (less(value, hana::at_c<hana::size_c<(low + high) / 2>>(range))) {
-    return binary_search_impl<low, (low + high) / 2, Result>(range, value,
-      std::forward<Less>(less), std::forward<Equal>(equal), std::forward<F>(function));
-  } else {
-    return binary_search_impl<(low + high) / 2, high, Result>(range, value,
-      std::forward<Less>(less), std::forward<Equal>(equal), std::forward<F>(function));
-  }
-}
-```
-<span class="fragment current-only" data-code-focus="5-7">If value less than middle use left subrange</span>
-<span class="fragment current-only" data-code-focus="8-10">Otherwise use right subrange</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-For single element just check equality
-```c++
-template <std::size_t low, std::size_t high, class Result, class Range, class Value,
-            class Less, class Equal, class F>
-constexpr std::enable_if_t<(high - low == 1), std::optional<Result>> binary_search_impl(
-    const Range& range, const Value& value, Less&&, Equal&& equal, F&& function) {
-  if (equal(value, hana::at_c<low>(range))) {
-    return function(hana::at_c<low>(range));
-  } else {
-    return {};
-  }
-}
-```
-
-</script></section><section data-markdown><script type="text/template">
-For empty return empty optional
-```c++
-template <std::size_t low, std::size_t high, class Result, class Range, class Value,
-          class Less, class Equal, class Function>
-constexpr std::enable_if_t<(high == low), std::optional<Result>> binary_search_impl(
-    const Range&, const Value&, Less&&, Equal&&, Function&&) {
-  return {};
-}
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-Now alternative operator should return ordered tuple
-```c++
-template <class ... Lhs, class ... Rhs>
-constexpr auto operator |(const Tree<hana::tuple<Lhs ...>>& lhs,
-                          const Tree<hana::tuple<Rhs ...>>& rhs) {
-  return tree(hana::concat(
-      hana::sort.by(hana::ordering(hana::first),
-        hana::concat(hana::filter(lhs.value, is_location),
-                     hana::filter(rhs.value, is_location))
-      ),
-      hana::concat(hana::sort.by(hana::ordering(hana::first),
-          hana::concat(hana::filter(lhs.value, is_method),
-                       hana::filter(rhs.value, is_method))
-        ),
-        hana::concat(
-          hana::filter(lhs.value, is_handler),
-          hana::concat(
-            hana::filter(rhs.value, is_handler),
-            hana::concat(hana::filter(lhs.value, is_parameter),
-                         hana::filter(rhs.value, is_parameter))
-    )))));
-}
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Let's implement route
-
-```c++
-template <class T, class Path, class MethodName, class ... Args>
-constexpr void route(const Tree<T>& tree, const Path& path,
-    const MethodName& method, Args&& ... args) {
-  using ContextType = Context<typename Path::const_iterator, std::decay_t<MethodName>>;
-  return route_for_tuple(
-    ContextType {std::cbegin(path), std::cend(path), method},
-    tree.value,
-    hana::tuple<>(),
-    std::forward<Args>(args) ...
-  );
-}
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-### Before implement deeper is there anything we forget?
-
-</script></section><section data-markdown><script type="text/template">
-
-### Return value!
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <class Result, class T, class Path, class MethodName, class ... Args>
-constexpr CallResult<Result> route(const Tree<T>& tree, const Path& path,
-    const MethodName& method, Args&& ... args) {
-  using ContextType = Context<typename Path::const_iterator, std::decay_t<MethodName>>;
-  return route_for_tuple<Result>(
-    ContextType {std::cbegin(path), std::cend(path), method},
-    tree.value,
-    hana::tuple<>(),
-    std::forward<Args>(args) ...
-  );
-}
-```
-</script></section><section data-markdown><script type="text/template">
-
-### Return type
-
-```c++
-enum class ErrorCode {
-  ok,
-  methodNotFound,
-  locationNotFound,
-};
-
-template <class T>
-using CallResult = std::variant<
-  std::conditional_t<std::is_same_v<T, void>, std::monostate, T>,
-  ErrorCode
->;
-```
-
-<span class="fragment current-only" data-code-focus="1-5">To have no deal with exceptions for errors</span>
-<span class="fragment current-only" data-code-focus="7-11">Emulate std::expected</span>
-<span class="fragment current-only" data-code-focus="9">Replace void with std::monostate to be able return "void" inside variant</span>
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <class R, class C, class P, class ... Key, class ... Node, class ... Args>
-constexpr CallResult<R> route_for_tuple(const C& context,
-    const hana::tuple<hana::pair<Key, Node> ...>& node, P&& parameters,
-    Args&& ... args) {
-  if (!at_path_end(context)) {
-    if (auto result = route_for_location<R>(context, hana::filter(node, is_location),
-                                               std::forward<Args>(args) ...)) {
-        return std::move(result).value();
-    }
-    return route_for_parameter<R>(context, hana::filter(node, is_parameter),
-                                     std::forward<Args>(args) ...);
-  }
-  return route_for_method<R>(context, hana::filter(node, is_method),
-                                std::forward<Args>(args) ...);
-}
-```
-
-<span class="fragment current-only" data-code-focus="5">If current path iterator is not the end of the path</span>
-<span class="fragment current-only" data-code-focus="6-7">Try to use path value as location</span>
-<span class="fragment current-only" data-code-focus="8">Return if it is</span>
-<span class="fragment current-only" data-code-focus="10-11">Otherwise use path value as parameter</span>
-<span class="fragment current-only" data-code-focus="13-14">If path is ended use method</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <class R, class Context, class Parameters, class ... Args>
-constexpr std::optional<CallResult<R>> route_for_location(const Context&,
-    const hana::tuple<>& /* node */, Parameters&&, Args&& ...) {
-  return {};
-}
-
-template <class R, class C, class P, class ... Key, class ... Node, class ... Args>
-constexpr std::optional<CallResult<R>> route_for_location(const C& context,
-    const hana::tuple<hana::pair<Location<Key>, Node> ...>& node,
-    P&& parameters, Args&& ... args) {
-  return binary_search<CallResult<R>>(node, get_path_value(context), Less {}, Equal {},
-    return_monostate_on_void([&] (const auto& next) {
-      return route_for_tuple<Result>(
-        with_next_path_iterator(context),
-        hana::second(next),
-        std::forward<Parameters>(parameters), std::forward<Args>(args) ...
-      );
-    })
-  );
-}
-```
-
-<span class="fragment current-only" data-code-focus="3-4">If there is no locations return nullopt</span>
-<span class="fragment current-only" data-code-focus="12-19">If there are locations, use binary search to find one</span>
-<span class="fragment current-only" data-code-focus="13-17">And do recursive call for next path value</span>
-<span class="fragment current-only" data-code-focus="14">Using context with next path iterator</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <class R, class C, class Parameters, class T, class Node, class ... Args>
-constexpr CallResult<R> route_for_parameter(const C& context,
-    const hana::tuple<hana::pair<Parameter<T>, Node>>& node,
-    Parameters&& parameters, Args&& ... args) {
-  return route_for_tuple<R>(
-    with_next_path_iterator(context),
-    hana::second(hana::front(node)),
-    hana::append(std::forward<Parameters>(parameters),
-                 T {get_path_value(context)}),
-    std::forward<Args>(args) ...
-  );
-}
-```
-
-<span class="fragment current-only" data-code-focus="7">Use single existing parameter node, checked by static_assert</span>
-<span class="fragment current-only" data-code-focus="8-9">Construct parameter value and append to tuple of parameters</span>
-<span class="fragment current-only" data-code-focus="5-11">And do recursive call for next path value</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <class R, class Context, class Parameters, class ... Args>
-constexpr CallResult<R> route_for_method(const Context&,
-    const hana::tuple<>&, Parameters&&, Args&& ...) noexcept {
-  return ErrorCode::methodNotFound;
-}
-
-template <class R, class C, class P, class ... Name, class ... Node, class ... Args>
-constexpr CallResult<R> route_for_method(const C& context,
-    const hana::tuple<hana::pair<Method<Name>, Node> ...>& node,
-        P&& params, Args&& ... args) {
-  auto result = binary_search<CallResult<R>>(node, context.method, Less {}, Equal {},
-    return_monostate_on_void([&] (const auto& next) {
-        return hana::unpack(std::forward<P>(params), [&] (auto&& ... p) {
-            return hana::second(next).impl(std::move(p) ...,
-                                           std::forward<Args>(args) ...);
-        });
-    })
-  );
-  return result ? std::move(result).value() : ErrorCode::methodNotFound;
-}
-```
-
-<span class="fragment current-only" data-code-focus="11-18">Find node by method</span>
-<span class="fragment current-only" data-code-focus="13-15">And call endpoint handler with given parameters</span>
-<span class="fragment current-only" data-code-focus="19">Return handler result or error</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-### Can we do any better?
-
-</script></section><section data-markdown><script type="text/template">
-
-### Let's reduce search complexity from O(log(N)) to O(1)
-
-</script></section><section data-markdown><script type="text/template">
-
-### By using unordered map!
-
-</script></section><section data-markdown><script type="text/template">
-
-### But what is the type of value?
-
-</script></section><section data-markdown><script type="text/template">
-
-### std::variant!
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <class T>
-struct Value {};
-
-template <class ... Key, class ... Node>
-struct Value<hana::tuple<hana::pair<Key, Node> ...>> {
-    using type = std::variant<std::reference_wrapper<const hana::pair<Key, Node>> ...>;
-};
-
-template <>
-struct Value<hana::tuple<>> {
-    using type = std::monostate;
-};
-
-template <class T>
-using ValueType = typename Value<std::decay_t<T>>::type;
-```
-
-<span class="fragment current-only" data-code-focus="1-2">By default we dont't need any type</span>
-<span class="fragment current-only" data-code-focus="4-7">Define only for tuple</span>
-<span class="fragment current-only" data-code-focus="9-12">Special case when there is no elements</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-Map type is customizable by special traits class template
-
-```c++
-template <class ... Ts>
-struct UnorderedMapTraits {
-  using Type = std::unordered_map<
-    KeyType<hana::tuple<Ts ...>>,
-    ValueType<hana::tuple<Ts ...>>
-  >;
-};
-
-template <class ... Ts>
-struct UnorderedMapTraits<hana::tuple<Ts ...>> {
-  using Type = typename UnorderedMapTraits<Ts ...>::Type;
-};
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-```c++
-template <template <class ...> class MapTraits, class ... Ts>
-struct MapRouter {
-  hana::tuple<Ts ...> nodes;
-  typename LocationsMapTraits<MapTraits, Ts ...>::Type locations;
-  typename MethodsMapTraits<MapTraits, Ts ...>::Type methods;
-
-  MapRouter() = default;
-  MapRouter(hana::tuple<Ts ...> nodes) : nodes(std::move(nodes)) {
-      fill_locations(this->nodes, locations);
-      fill_methods(this->nodes, methods);
-  }
-  MapRouter(const MapRouter& other)  { ... }
-  MapRouter(MapRouter&& other) { ... }
-};
-```
-
-<span class="fragment current-only" data-code-focus="3">Map router contains original nodes</span>
-<span class="fragment current-only" data-code-focus="4">locations map</span>
-<span class="fragment current-only" data-code-focus="5">and methods map</span>
-<span class="fragment current-only" data-code-focus="12-13">Because values in map are references we need special copy and move constructors</span>
-
-</script></section><section data-markdown><script type="text/template">
-
-And if we want to use it for our api we just call special function
-
-```c++
-const auto api = use_unordered_map_router(
-  "conferences"_l / conference_id / (
-    "speakers"_l / speaker_id / "GET"_m(get_speaker)
-    | "rooms"_l / "PUT"_m(add_room)
-    | "talks"_l / talk_id / "DELETE"_m(remove_talk)
-  )
+constexpr Selector dispatch(
+  Action(conferences_tag, argument<ConferenceId>(
+    Action(speakers_tag, argument<SpeakerId>(
+      Action(get_tag, &Community::get_speaker)
+    )),
+    Action(talks_tag, argument<TalkId>(
+      Action(delete_tag, &Community::remove_talk)
+    )),
+    Action(rooms_tag, Selector(
+      Action(post_tag, &Community::add_room),
+      argument<RoomId>(
+        Action(talks_tag, Selector(Action(get_tag, &Community::get_room_talks))),
+        Action(speakers_tag, Selector(Action(get_tag, &Community::get_room_speakers)))
+      )
+    ))
+  ))
 );
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-Or for custom map
+#### Input example
 
 ```c++
-template <class ... Ts>
-struct MyMap {
-  using Type = std::map<
-    KeyType<hana::tuple<Ts ...>>,
-    ValueType<hana::tuple<Ts ...>>
-  >;
+struct Request {
+  std::string method;
+  std::vector<std::string> uri;
 };
 
-template <class ... Ts>
-struct MyMap<hana::tuple<Ts ...>> {
-  using Type = typename MyMap<Ts ...>::Type;
-};
-
-const auto api = use_map_router<MyMap>(/* ... */);
+Community community;
+Request request;
+request.method = "GET";
+request.uri = {"conferences", "cppnow2020", "speakers", "326"};
+std::visit(
+  Serialize {},
+  dispatch(std::ranges::subrange(begin(request), end(request)), community)
+);
 ```
 
 </script></section><section data-markdown><script type="text/template">
 
-### But how is this all efficient?
-
-</script></section><section data-markdown><script type="text/template">
-
-### Benchmark
+#### Request iterator
 
 ```c++
-constexpr auto api =
-  "conferences"_l / (
-    parameter<ConferenceId> / (
-      "speakers"_l / (
-        "GET"_m(get_all_speakers) | "PUT"_m(create_speaker)
-        | parameter<SpeakerId> / (
-          "GET"_m(get_speaker)
-          | "DELETE"_m(remove_speaker) | "POST"_m(update_speaker)
-        )
-      )
-      | "talks"_l / (
-        "GET"_m(get_all_talks) | "PUT"_m(create_talk)
-        | parameter<TalkId> / (
-          "GET"_m(get_talk)
-          | "DELETE"_m(remove_talk) | "POST"_m(update_talk)
-        )
-      )
-    )
-  );
-```
-
-</script></section><section data-markdown><script type="text/template">
-
-<canvas data-chart="bar">
-<!--
-{
-  "data": {
-    "labels": [
-      "naive",
-      "virtual methods",
-      "virtual methods & variant",
-      "binary search",
-      "unordered map"
-    ],
-    "datasets": [{
-      "data": [436, 479, 511, 450, 13202],
-      "label": "cpu time, ns"
-    }]
+struct Iterator {
+  using value_type = std::string_view;
+  using difference_type = std::ptrdiff_t;
+  const Request* request;
+  std::size_t index = 0;
+  std::string_view operator *() const {
+    return index < request->uri.size() ? request->uri[index] : request->method;
   }
+  Iterator& operator++();
+  Iterator operator++(int);
+  friend bool operator==(const Iterator& lhs, const Iterator& rhs);
+};
+Iterator begin(const Request& request) {
+  return Iterator {&request, 0};
 }
--->
-</canvas>
+Iterator end(const Request& request) {
+  return Iterator {&request, request.uri.size() + 1};
+}
+```
 
 </script></section><section data-markdown><script type="text/template">
 
-### Without unordered_map
-
-  <canvas data-chart="bar">
-  <!--
-  {
-    "data": {
-      "labels": [
-        "naive",
-        "virtual methods",
-        "virtual methods & variant",
-        "binary search"
-      ],
-      "datasets": [{
-        "data": [436, 479, 511, 450],
-        "label": "cpu time, ns"
-      }]
-    },
-    "options": {
-      "scales": {
-        "yAxes": [{
-          "ticks": {
-            "beginAtZero": true
-          }
-        }]
-      }
-    }
-  }
-  -->
-  </canvas>
+### Let's compare generated assembly
 
 </script></section><section data-markdown><script type="text/template">
 
-### Single level with integers with known input
+#### If-then solution
 
-  <canvas data-chart="line">
-  <!--
-  {
-    "data": {
-      "labels": [1, 2, 4, 8, 16, 32],
-      "datasets": [
-        {
-          "data": [20, 29, null],
-          "label": "naive, ns",
-          "fill": false,
-          "lineTension": 0
-        },
-        {
-          "data": [null, 29, 32, 34],
-          "label": "naive with switch, ns",
-          "fill": false,
-          "lineTension": 0
-        },
-        {
-          "data": [20, 29, 33, 37, 39, 42],
-          "label": "binary search, ns",
-          "fill": false,
-          "lineTension": 0
-        },
-        {
-          "data": [20, 29, 41, 46, 46, 48],
-          "label": "unordered map, ns",
-          "fill": false,
-          "lineTension": 0
-        }
-      ]
-    },
-    "options": {
-      "scales": {
-        "yAxes": [{
-            "ticks": {
-                "beginAtZero": true
-            }
-        }]
-      }
-    }
+```c++
+inline int increment(int value) { return value + 1; }
+inline int decrement(int value) { return value - 1; }
+int dispatch_if_then(std::span<int> input) {
+  if (input.empty()) std::abort();
+  if (input[0] == 3457384) {
+    input = consume(input);
+    if (input.empty()) std::abort();
+    const auto arg = input[0];
+    if (!consume(input).empty()) std::abort();
+    return increment(arg);
+  } else if (input[0] == 5438990) {
+    input = consume(input);
+    if (input.empty()) std::abort();
+    const auto arg = input[0];
+    if (!consume(input).empty()) std::abort();
+    return decrement(arg);
   }
-  -->
-  </canvas>
+  std::abort();
+}
+```
+
+<span class="fragment current-only" data-code-focus="4">Exceptions are replaced by `std::abort`</span>
+
+</script></section>
+
+<section>
+  <h4>If-then solution assembly</h4>
+  <a href="https://godbolt.org/z/z4cYs3">https://godbolt.org/z/z4cYs3</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_if_then_asm.png" />
+</section>
+
+<section>
+  <h4>If-then solution assembly graph</h4>
+  <a href="https://godbolt.org/z/z4cYs3">https://godbolt.org/z/z4cYs3</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_if_then_graph.png" />
+</section>
+
+<section>
+  <h4>If-then solution assembly graph</h4>
+  <a href="https://godbolt.org/z/z4cYs3">https://godbolt.org/z/z4cYs3</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_if_then_graph_marked.png" />
+</section>
+
+<section data-markdown><script type="text/template">
+
+#### Tuple-based solution
+
+```c++
+inline int increment(int value) { return value + 1; }
+inline int decrement(int value) { return value - 1; }
+
+constexpr Selector dispatch_impl(
+  Action(std::integral_constant<int, 3457384>{}, [] (int v) { return increment(v); }),
+  Action(std::integral_constant<int, 5438990>{}, [] (int v) { return decrement(v); })
+);
+
+auto dispatch(std::span<int> input) {
+  return dispatch_impl(input);
+}
+```
+
+</script></section>
+
+<section>
+  <h4>Tuple-based solution assembly</h4>
+  <a href="https://godbolt.org/z/8eYEzo">https://godbolt.org/z/8eYEzo</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_router_asm.png" />
+</section>
+
+<section>
+  <h4>Tuple-based solution assembly graph</h4>
+  <a href="https://godbolt.org/z/8eYEzo">https://godbolt.org/z/8eYEzo</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_router_graph.png" />
+</section>
+
+<section>
+  <h4>Tuple-based solution assembly graph</h4>
+  <a href="https://godbolt.org/z/8eYEzo">https://godbolt.org/z/8eYEzo</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_router_graph_marked.png" />
+</section>
+
+<section>
+  <h4>Generated assembly comparison</h4>
+  <a href="https://godbolt.org/z/KPdM1n">https://godbolt.org/z/KPdM1n</a> (GCC 10.2)
+  <div class="container">
+    <div class="col">
+      <h5>If-then-based</h5>
+      <img data-src="images/int_if_then_graph_marked.png" />
+    </div>
+    <div class="col">
+      <h5>Tuple-based</h5>
+      <img data-src="images/int_router_graph_marked.png" />
+    </div>
+  </div>
+</section>
+
+<section>
+  <h4>Generated assembly diff</h4>
+  <a href="https://godbolt.org/z/KPdM1n">https://godbolt.org/z/KPdM1n</a> (GCC 10.2)
+  <img class="stretch" data-src="images/int_diff.png" />
+</section>
 
 </script></section><section data-markdown><script type="text/template">
 
-### 4 levels with known input
-3 with 4 locations each, 4 methods
+### Tuple-based approach summary
 
-  <canvas data-chart="bar">
-  <!--
-  {
-    "data": {
-      "labels": ["binary search", "unordered map"],
-      "datasets": [{
-        "data": [244, 188],
-        "label": "cpu time, ns"
-      }]
-    },
-    "options": {
-      "scales": {
-        "yAxes": [{
-          "ticks": {
-            "beginAtZero": true
-          }
-        }]
-      }
-    }
-  }
-  -->
-  </canvas>
+* <span class="pros">Pros</span>:
+  * Dispatch logic is separated from the structure
+  * Actions are composable
+  * No boilerplate action wrappers
+  * Implicit number of arguments check
+  * Implicit return type definition and conversion
+  * Generated assembly is good enough optimized
+* <span class="cons">Cons</span>:
+  * Non-trivial implementation
+
+</script></section><section data-markdown><script type="text/template">
+
+### Questions?
 
           </script>
         </section>
@@ -1149,24 +1241,10 @@ constexpr auto api =
           },
         },
       });
-
-      // Add the line-numbers class to all code blocks, so that code examples
-      // have line numbers.
-      // Reveal.addEventListener('ready', function(event) {
-      //   $("pre>code").each(function(index, block) {
-      //     block.classList.add("line-numbers");
-      //   });
-      // });
-
-      // When the current slide contains an element with id '#godbolt', we reload
-      // the iframe. This is to workaround a bug where the iframe would otherwise
-      // not be painted properly.
-      Reveal.addEventListener('slidechanged', function(event) {
-        var godbolt = event.currentSlide.querySelector("#godbolt");
-        if (godbolt != undefined) {
-          console.log("Reloading godbolt iframe");
-          godbolt.contentWindow.location.reload(true);
-        }
+    </script>
+    <script>
+      Reveal.initialize({
+        plugins: [ RevealHighlight ]
       });
     </script>
   </body>
